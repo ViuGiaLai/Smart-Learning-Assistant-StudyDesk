@@ -22,7 +22,11 @@
       },
       "edgeToEdgeEnabled": true
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store",
+      "expo-dev-client",
+      ["expo-notifications", { "color": "#0F766E" }]
+    ],
     "extra": {
       "apiUrl": ""
     }

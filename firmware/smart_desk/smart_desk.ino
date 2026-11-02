@@ -17,7 +17,7 @@
 
 #include "config.h"
 
-#if ENABLE_HTTP_FALLBACK
+#if ENABLE_HTTP_FALLBACK || ENABLE_HTTP_ALERTS
 #include <HTTPClient.h>
 #endif
 
@@ -50,8 +50,15 @@ bool alertsEnabled = true;
 
 float temperatureMin = TEMP_MIN_DEFAULT;
 float temperatureMax = TEMP_MAX_DEFAULT;
+float humidityMin = HUMIDITY_MIN_DEFAULT;
+float humidityMax = HUMIDITY_MAX_DEFAULT;
 int lightMinLux = LIGHT_MIN_DEFAULT;
 uint32_t sampleIntervalMs = SAMPLE_INTERVAL_MS;
+
+#if ENABLE_HTTP_ALERTS
+uint32_t lastHttpAlertAt = 0;
+char lastHttpAlertType[32] = "";
+#endif
 
 uint32_t lastSampleAt = 0;
 uint32_t bootAt = 0;
@@ -208,6 +215,10 @@ void applyThresholds(JsonObject thresholds) {
     temperatureMin = thresholds["temperature_min"].as<float>();
   if (!thresholds["temperature_max"].isNull())
     temperatureMax = thresholds["temperature_max"].as<float>();
+  if (!thresholds["humidity_min"].isNull())
+    humidityMin = thresholds["humidity_min"].as<float>();
+  if (!thresholds["humidity_max"].isNull())
+    humidityMax = thresholds["humidity_max"].as<float>();
   if (!thresholds["light_min_lux"].isNull())
     lightMinLux = (int)thresholds["light_min_lux"].as<float>();
   if (!thresholds["sample_interval_seconds"].isNull()) {
@@ -215,8 +226,9 @@ void applyThresholds(JsonObject thresholds) {
     seconds = constrain(seconds, 2, 300);
     sampleIntervalMs = (uint32_t)seconds * 1000UL;
   }
-  Serial.printf("[config] temp=[%.1f, %.1f] light_min=%d interval=%lums\n", temperatureMin,
-                temperatureMax, lightMinLux, (unsigned long)sampleIntervalMs);
+  Serial.printf("[config] temp=[%.1f, %.1f] humidity=[%.0f, %.0f] light_min=%d interval=%lums\n",
+                temperatureMin, temperatureMax, humidityMin, humidityMax, lightMinLux,
+                (unsigned long)sampleIntervalMs);
 }
 
 void onCommand(char *topic, byte *payload, unsigned int length) {
@@ -286,6 +298,75 @@ void connectMqtt() {
 }
 
 // ---------------------------------------------------------------------------
+// LAB3: ESP32 -> FastAPI alert over HTTP
+// ---------------------------------------------------------------------------
+#if ENABLE_HTTP_ALERTS
+const char *detectAlert(float temperature, float humidity, float lightLux,
+                        bool motion) {
+  if (!isnan(temperature) && temperature > temperatureMax) return "HIGH_TEMPERATURE";
+  if (!isnan(temperature) && temperature < temperatureMin) return "LOW_TEMPERATURE";
+  if (!isnan(humidity) && humidity > humidityMax) return "HIGH_HUMIDITY";
+  if (!isnan(humidity) && humidity < humidityMin) return "LOW_HUMIDITY";
+  if (lightLux < (float)lightMinLux) return "LOW_LIGHT";
+  if (motion) return "MOTION_DETECTED";
+  return nullptr;
+}
+
+bool postAlertHttp(const PendingReading &reading, const char *alertType) {
+  if (WiFi.status() != WL_CONNECTED || strlen(API_BASE_URL) == 0) return false;
+  if (strlen(DEVICE_KEY) == 0 || strcmp(DEVICE_KEY, "sk_replace_me") == 0) {
+    Serial.println("[alert-http] DEVICE_KEY chua cau hinh, bo qua");
+    return false;
+  }
+
+  HTTPClient http;
+  http.begin(String(API_BASE_URL) + "/api/iot/alerts");
+  http.setTimeout(4000);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Code", DEVICE_CODE);
+  http.addHeader("X-Device-Key", DEVICE_KEY);
+
+  JsonDocument doc;
+  doc["device_id"] = DEVICE_CODE;
+  doc["message_id"] = reading.messageId;
+  if (!isnan(reading.temperature)) doc["temperature"] = reading.temperature;
+  if (!isnan(reading.humidity)) doc["humidity"] = reading.humidity;
+  doc["light"] = reading.light;
+  doc["light_lux"] = roundf(estimateLux(reading.light) * 10.0f) / 10.0f;
+  doc["motion"] = reading.motion ? 1 : 0;
+  doc["alert_type"] = alertType;
+  String timestamp = isoUtc(reading.recordedEpoch);
+  if (timestamp.length() > 0) doc["timestamp"] = timestamp;
+
+  String payload;
+  serializeJson(doc, payload);
+  int status = http.POST(payload);
+  http.end();
+  Serial.printf("[alert-http] type=%s status=%d\n", alertType, status);
+  return status == 200 || status == 202;
+}
+
+void maybeSendAlertHttp(const PendingReading &reading) {
+  float lightLux = estimateLux(reading.light);
+  const char *alertType =
+      detectAlert(reading.temperature, reading.humidity, lightLux, reading.motion);
+  if (alertType == nullptr) return;
+
+  uint32_t now = millis();
+  if (strcmp(alertType, lastHttpAlertType) == 0 &&
+      now - lastHttpAlertAt < HTTP_ALERT_COOLDOWN_MS) {
+    return;
+  }
+  // Mark the attempt before the request: a dead backend must not be hammered
+  // every sample interval. A failed alert is retried after the cooldown.
+  strncpy(lastHttpAlertType, alertType, sizeof(lastHttpAlertType) - 1);
+  lastHttpAlertType[sizeof(lastHttpAlertType) - 1] = '\0';
+  lastHttpAlertAt = now;
+  postAlertHttp(reading, alertType);
+}
+#endif
+
+// ---------------------------------------------------------------------------
 // Sampling
 // ---------------------------------------------------------------------------
 void sampleAndPublish() {
@@ -317,6 +398,12 @@ void sampleAndPublish() {
 
   enqueueReading(reading);
   flushAllTransports();
+
+#if ENABLE_HTTP_ALERTS
+  if (alertsEnabled) {
+    maybeSendAlertHttp(reading);
+  }
+#endif
 
   // Local fallback alert when the backend is unreachable.
   if (alertsEnabled && !mqtt.connected()) {

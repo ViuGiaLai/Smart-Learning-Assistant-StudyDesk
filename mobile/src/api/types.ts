@@ -143,6 +143,24 @@ export interface NotificationItem {
   created_at: string;
 }
 
+export interface PushResult {
+  enabled: boolean;
+  attempted: number;
+  sent: number;
+  failed: number;
+  detail: string | null;
+}
+
+export interface PushDelivery {
+  notification: NotificationItem;
+  push: PushResult;
+}
+
+export interface DeviceTokenRegistration {
+  registered: boolean;
+  platform: string;
+}
+
 export interface ChatResponse {
   conversation_id: string;
   answer: string;

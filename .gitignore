@@ -24,6 +24,12 @@ venv/
 .env.local
 firmware/smart_desk/config.h.bak
 
+# Firebase: service account belongs on the server only.
+backend/secrets/*.json
+mobile/google-services.json
+mobile/GoogleService-Info.plist
+*.keystore
+
 # Build outputs
 firmware/.pio/
 .pio/

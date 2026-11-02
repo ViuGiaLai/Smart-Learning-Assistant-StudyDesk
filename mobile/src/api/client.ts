@@ -8,7 +8,9 @@ import type {
   Device,
   DeviceSettings,
   DeviceStatus,
+  DeviceTokenRegistration,
   NotificationItem,
+  PushDelivery,
   ReadingPage,
   RegisteredDevice,
   SensorReading,
@@ -253,6 +255,27 @@ export const api = {
   },
   markRead(id: string): Promise<NotificationItem> {
     return request(`/api/notifications/${id}/read`, { method: "POST" });
+  },
+  registerDeviceToken(
+    token: string,
+    platform: "android" | "ios" | "web",
+  ): Promise<DeviceTokenRegistration> {
+    return request("/api/notifications/register-device", {
+      method: "POST",
+      body: json({ token, platform }),
+    });
+  },
+  unregisterDeviceToken(token: string): Promise<{ unregistered: boolean }> {
+    return request("/api/notifications/register-device", {
+      method: "DELETE",
+      body: json({ token }),
+    });
+  },
+  sendNotification(title: string, body: string): Promise<PushDelivery> {
+    return request("/api/notifications/send", {
+      method: "POST",
+      body: json({ title, body, type: "manual" }),
+    });
   },
 
   // AI --------------------------------------------------------------------

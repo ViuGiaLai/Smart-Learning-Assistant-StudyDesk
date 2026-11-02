@@ -9,7 +9,7 @@ Tài liệu tương tác: `/docs` (Swagger UI), `/redoc`.
 - Request/response dùng JSON UTF-8.
 - Thời gian trả về là ISO-8601 UTC, ví dụ `2026-11-01T03:20:00Z`.
 - Các endpoint (trừ `/health`, `/api/auth/register`, `/api/auth/login`,
-  `/api/auth/refresh`, `/api/iot/telemetry`) yêu cầu header:
+  `/api/auth/refresh`, `/api/iot/telemetry`, `/api/iot/alerts`) yêu cầu header:
 
   ```http
   Authorization: Bearer <access_token>
@@ -47,6 +47,7 @@ Không cần xác thực.
   "auth_provider": "supabase",
   "ai_enabled": true,
   "ai_provider": "groq",
+  "push_enabled": true,
   "timezone": "Asia/Ho_Chi_Minh"
 }
 ```
@@ -344,6 +345,49 @@ Phản hồi `202`:
 Nếu bản ghi trùng: `stored=false`, `duplicate=true`, `reading` là bản ghi đã có.  
 Nếu người dùng tắt thu thập: `stored=false`, `collection_enabled=false`.
 
+### `POST /api/iot/alerts` (LAB3)
+
+Thiết bị gửi cảnh báo chủ động. Xác thực bằng cùng header `X-Device-Code` và
+`X-Device-Key`; body có thể kèm telemetry để lưu cùng lúc.
+
+```json
+{
+  "device_id": "STUDY_DESK_001",
+  "message_id": "8f3c2a1b",
+  "temperature": 35.5,
+  "humidity": 70,
+  "light": 120,
+  "light_lux": 4.8,
+  "motion": 1,
+  "alert_type": "HIGH_TEMPERATURE",
+  "timestamp": "2026-11-02T09:00:00Z"
+}
+```
+
+`alert_type` được map sang notification: `HIGH_TEMPERATURE`, `LOW_TEMPERATURE`,
+`HIGH_HUMIDITY`, `LOW_HUMIDITY`, `LOW_LIGHT`, `MOTION_DETECTED` (và các mã khác được
+giữ nguyên). Backend chống spam theo `ALERT_COOLDOWN_SECONDS`; cảnh báo trùng trong
+cooldown trả `alert=null` nhưng vẫn lưu reading nếu `message_id` mới.
+
+Phản hồi `202`:
+
+```json
+{
+  "stored": true,
+  "duplicate": false,
+  "reading": { "message_id": "8f3c2a1b", "temperature": 35.5 },
+  "alert": {
+    "id": "uuid",
+    "type": "temperature_high",
+    "title": "Nhiệt độ phòng đang cao",
+    "content": "Thiết bị báo nhiệt độ 35.5°C, vượt ngưỡng cài đặt..."
+  },
+  "push": { "enabled": true, "attempted": 1, "sent": 1, "failed": 0, "detail": null }
+}
+```
+
+Nếu FCM chưa cấu hình, `push.enabled=false` nhưng thông báo vẫn được lưu.
+
 ## 6. Phiên học
 
 ### `POST /api/study-sessions/start`
@@ -456,11 +500,30 @@ Tạo kế hoạch:
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/api/notifications?unread_only=false&limit=30` | Danh sách mới nhất |
+| POST | `/api/notifications/register-device` | Đăng ký FCM token `{token, platform}` |
+| DELETE | `/api/notifications/register-device` | Huỷ token `{token}` |
+| POST | `/api/notifications/send` | Tạo + push cho chính mình |
+| POST | `/api/notifications/send-to-user` | Admin gửi cho user khác |
 | POST | `/api/notifications/{id}/read` | Đánh dấu đã đọc |
 | POST | `/api/notifications/read-all` | Đánh dấu tất cả |
 
+Body gửi thông báo:
+
+```json
+{ "title": "Nhắc học", "body": "Đã đến giờ học môn Lập trình Python.", "type": "manual" }
+```
+
+Phản hồi gồm `notification` và `push` (best-effort; FCM lỗi không làm mất thông báo):
+
+```json
+{
+  "notification": { "id": "uuid", "type": "manual", "title": "Nhắc học", "is_read": false },
+  "push": { "enabled": true, "attempted": 1, "sent": 1, "failed": 0, "detail": null }
+}
+```
+
 Loại thông báo: `temperature_high`, `temperature_low`, `humidity_high`, `humidity_low`,
-`light_low`, `no_motion`, `device_offline`.
+`light_low`, `motion_detected`, `device_offline`, `study_completed`, `study_reminder`, `manual`.
 
 ## 9. Trợ lý AI
 

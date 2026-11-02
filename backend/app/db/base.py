@@ -87,3 +87,11 @@ def _ensure_compat_columns(sync_conn) -> None:
         sync_conn.execute(
             text("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL")
         )
+    if "study_plans" in inspector.get_table_names():
+        plan_columns = {
+            column["name"] for column in inspector.get_columns("study_plans")
+        }
+        if "reminder_sent_at" not in plan_columns:
+            sync_conn.execute(
+                text("ALTER TABLE study_plans ADD COLUMN reminder_sent_at TIMESTAMP")
+            )

@@ -159,3 +159,96 @@ async def auto_control_alert_outputs(device: Device, alerts: list[dict]) -> None
     if not _settings(device).get("auto_control", True) or not alerts:
         return
     await mqtt_service.send_command(device.device_code, {"action": "set_led", "value": True})
+
+
+def reported_alert_copy(
+    alert_type: str,
+    *,
+    temperature: float | None,
+    humidity: float | None,
+    light_lux: float | None,
+) -> tuple[str, str, str]:
+    """Map the firmware's alert code to a notification type/title/content."""
+    normalized = alert_type.strip().upper().replace("-", "_")
+
+    if normalized == "HIGH_TEMPERATURE":
+        value = f"{temperature:.1f}°C" if temperature is not None else "cao"
+        return (
+            "temperature_high",
+            "Nhiệt độ phòng đang cao",
+            f"Thiết bị báo nhiệt độ {value}, vượt ngưỡng cài đặt. "
+            "Hãy mở cửa hoặc bật quạt để dễ tập trung.",
+        )
+    if normalized == "LOW_TEMPERATURE":
+        value = f"{temperature:.1f}°C" if temperature is not None else "thấp"
+        return (
+            "temperature_low",
+            "Nhiệt độ phòng đang thấp",
+            f"Thiết bị báo nhiệt độ {value}, dưới ngưỡng cài đặt. Hãy giữ ấm khi học.",
+        )
+    if normalized == "HIGH_HUMIDITY":
+        value = f"{humidity:.0f}%" if humidity is not None else "cao"
+        return (
+            "humidity_high",
+            "Độ ẩm cao",
+            f"Thiết bị báo độ ẩm {value}, vượt ngưỡng cài đặt. Hãy thông gió phòng học.",
+        )
+    if normalized == "LOW_HUMIDITY":
+        value = f"{humidity:.0f}%" if humidity is not None else "thấp"
+        return (
+            "humidity_low",
+            "Độ ẩm thấp",
+            f"Thiết bị báo độ ẩm {value}, dưới ngưỡng cài đặt. Hãy bổ sung nước.",
+        )
+    if normalized == "LOW_LIGHT":
+        value = f"{light_lux:.0f} lux" if light_lux is not None else "thấp"
+        return (
+            "light_low",
+            "Ánh sáng bàn học chưa đủ",
+            f"Thiết bị báo cường độ sáng {value}, dưới ngưỡng cài đặt. Hãy bật đèn bàn.",
+        )
+    if normalized in {"MOTION_DETECTED", "MOTION"}:
+        return (
+            "motion_detected",
+            "Phát hiện chuyển động tại bàn học",
+            "Cảm biến PIR vừa phát hiện chuyển động. Nếu bạn đang học, hãy tiếp tục "
+            "duy trì tập trung.",
+        )
+    if normalized == "DEVICE_OFFLINE":
+        return (
+            "device_offline",
+            "Thiết bị mất kết nối",
+            "Thiết bị báo mất kết nối. Hãy kiểm tra nguồn và Wi-Fi của ESP32.",
+        )
+
+    slug = normalized.lower()[:40] or "device_alert"
+    return slug, "Cảnh báo từ thiết bị", f"Thiết bị báo sự kiện {alert_type}."
+
+
+async def create_reported_alert(
+    db: AsyncSession,
+    device: Device,
+    alert_type: str,
+    title: str,
+    content: str,
+) -> Notification | None:
+    """Create a notification reported by the device, respecting cooldown."""
+    if not _settings(device).get("collection_enabled", True):
+        return None
+    if await _already_alerted(
+        db, device.id, alert_type, settings.alert_cooldown_seconds
+    ):
+        return None
+
+    notification = Notification(
+        user_id=device.user_id,
+        device_id=device.id,
+        type=alert_type[:40],
+        title=title[:200],
+        content=content[:1000],
+    )
+    db.add(notification)
+    await db.commit()
+    await db.refresh(notification)
+    logger.info("device=%s reported_alert=%s", device.device_code, alert_type)
+    return notification

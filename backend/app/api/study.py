@@ -17,6 +17,7 @@ from app.schemas.study import (
     StudySessionOut,
     StudyStatsOut,
 )
+from app.services import fcm
 from app.services.stats import get_study_stats, session_duration_seconds
 
 router = APIRouter(tags=["Study"])
@@ -141,18 +142,26 @@ async def _finish(session: StudySession, cancelled: bool, db) -> StudySessionOut
         if plan is not None and plan.user_id == session.user_id:
             plan.status = "completed"
             plan.completed_at = now
+    notification: Notification | None = None
     if not cancelled and session.accumulated_seconds >= 60:
-        db.add(
-            Notification(
-                user_id=session.user_id,
-                type="study_completed",
-                title="Hoàn thành phiên học",
-                content=f"Bạn đã tập trung {session.accumulated_seconds // 60} phút. "
-                "Hãy nghỉ ngơi và ghi lại điều đã học được.",
-            )
+        notification = Notification(
+            user_id=session.user_id,
+            type="study_completed",
+            title="Hoàn thành phiên học",
+            content=f"Bạn đã tập trung {session.accumulated_seconds // 60} phút. "
+            "Hãy nghỉ ngơi và ghi lại điều đã học được.",
         )
+        db.add(notification)
     await db.commit()
     await db.refresh(session)
+    if notification is not None:
+        await fcm.send_to_user(
+            db,
+            session.user_id,
+            notification.title,
+            notification.content,
+            {"type": "study_completed", "session_id": session.id},
+        )
     return _session_out(session)
 
 

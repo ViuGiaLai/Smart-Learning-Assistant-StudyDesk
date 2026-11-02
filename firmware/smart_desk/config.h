@@ -36,6 +36,8 @@
 // Default thresholds (the app can override them via set_thresholds)
 #define TEMP_MIN_DEFAULT 18.0f
 #define TEMP_MAX_DEFAULT 30.0f
+#define HUMIDITY_MIN_DEFAULT 30.0f
+#define HUMIDITY_MAX_DEFAULT 70.0f
 #define LIGHT_MIN_DEFAULT 150
 
 // LDR module polarity (AO pin):
@@ -49,3 +51,8 @@
 #define ENABLE_HTTP_FALLBACK 0
 #define API_BASE_URL "http://192.168.1.10:8000"
 #define DEVICE_KEY "sk_replace_me"
+
+// LAB3: send a separate alert to FastAPI when a threshold is crossed.
+// Keep this off for a real desk until API_BASE_URL and DEVICE_KEY are set.
+#define ENABLE_HTTP_ALERTS 0
+#define HTTP_ALERT_COOLDOWN_MS 60000UL

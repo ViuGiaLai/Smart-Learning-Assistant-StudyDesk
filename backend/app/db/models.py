@@ -136,6 +136,7 @@ class StudyPlan(Base):
     planned_minutes: Mapped[int] = mapped_column(Integer, default=25)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     user: Mapped[User] = relationship(back_populates="study_plans")
@@ -180,6 +181,21 @@ class Notification(Base):
     content: Mapped[str] = mapped_column(String(1000))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class DeviceToken(Base):
+    """FCM registration token for a user's phone/tablet."""
+
+    __tablename__ = "device_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    platform: Mapped[str] = mapped_column(String(20), default="android")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AIConversation(Base):

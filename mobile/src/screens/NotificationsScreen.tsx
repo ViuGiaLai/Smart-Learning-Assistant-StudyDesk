@@ -12,6 +12,7 @@ import { Card, EmptyState } from "../components/ui";
 import type { RootStackParamList } from "../navigation/types";
 import { palette, spacing } from "../theme";
 import { relativeTime } from "../utils/format";
+import { registerPushToken } from "../notifications/push";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Notifications">;
 
@@ -36,6 +37,8 @@ export default function NotificationsScreen({ navigation }: Props) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -75,6 +78,34 @@ export default function NotificationsScreen({ navigation }: Props) {
     }
   };
 
+  const testPush = async () => {
+    setPushBusy(true);
+    setPushMessage(null);
+    try {
+      const token = await registerPushToken();
+      if (!token) {
+        setPushMessage(
+          "Chưa lấy được FCM token. Cần development build + google-services.json và quyền thông báo.",
+        );
+        return;
+      }
+      const result = await api.sendNotification(
+        "Nhắc học thử",
+        "Đã đến giờ học môn Lập trình Python.",
+      );
+      setPushMessage(
+        result.push.enabled
+          ? `Đã gửi tới ${result.push.sent}/${result.push.attempted} thiết bị.`
+          : (result.push.detail ?? "Server chưa cấu hình FCM."),
+      );
+      await load();
+    } catch (caught) {
+      setPushMessage(messageOf(caught));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const unread = items.filter((item) => !item.is_read).length;
 
   return (
@@ -102,6 +133,30 @@ export default function NotificationsScreen({ navigation }: Props) {
           </Text>
         </Card>
       ) : null}
+
+      <Card style={styles.pushCard}>
+        <View style={styles.pushRow}>
+          <View style={styles.pushIcon}>
+            <MaterialCommunityIcons name="bell-ring-outline" size={20} color={palette.primaryDark} />
+          </View>
+          <View style={styles.pushText}>
+            <Text variant="titleSmall" style={styles.title}>
+              Thông báo đẩy FCM
+            </Text>
+            <Text variant="bodySmall" style={styles.body}>
+              Nhận nhắc học và cảnh báo môi trường trên điện thoại.
+            </Text>
+            {pushMessage ? (
+              <Text variant="labelSmall" style={styles.pushMessage}>
+                {pushMessage}
+              </Text>
+            ) : null}
+          </View>
+          <Button compact mode="contained-tonal" loading={pushBusy} onPress={() => void testPush()}>
+            Gửi thử
+          </Button>
+        </View>
+      </Card>
 
       {items.length === 0 ? (
         <EmptyState
@@ -149,6 +204,18 @@ export default function NotificationsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   errorCard: { backgroundColor: "#FEF2F2", borderColor: "#FECACA", marginBottom: spacing.md },
   errorText: { color: palette.danger },
+  pushCard: { marginBottom: spacing.md },
+  pushRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  pushIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: palette.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pushText: { flex: 1 },
+  pushMessage: { color: palette.primaryDark, marginTop: 4 },
   card: { paddingVertical: 0 },
   row: {
     flexDirection: "row",

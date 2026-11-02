@@ -18,7 +18,8 @@ begin
         'study_plans',
         'study_sessions',
         'notifications',
-        'ai_conversations'
+        'ai_conversations',
+        'device_tokens'
     ]
     loop
         if to_regclass(format('public.%I', table_name)) is not null then

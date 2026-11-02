@@ -10,6 +10,7 @@ tests/
 .env
 .env.*
 !.env.example
+secrets/
 Dockerfile
 .dockerignore
 README.md

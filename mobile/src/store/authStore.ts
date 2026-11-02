@@ -4,6 +4,7 @@ import { ApiError, api } from "../api/client";
 import { getStored, removeStored, setStored } from "../api/storage";
 import { session } from "../api/session";
 import type { TokenPair, User } from "../api/types";
+import { unregisterPushToken } from "../notifications/push";
 
 const ACCESS_KEY = "sla.access_token";
 const REFRESH_KEY = "sla.refresh_token";
@@ -119,6 +120,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   async signOut() {
+    await unregisterPushToken();
     session.clear();
     await clearTokens();
     set({ status: "signedOut", user: null, error: null, notice: null });

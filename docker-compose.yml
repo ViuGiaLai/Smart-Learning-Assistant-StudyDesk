@@ -56,8 +56,12 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-auto}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+      FIREBASE_CREDENTIALS_FILE: /app/secrets/firebase-service-account.json
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       SEED_DEMO: "false"
       LOG_LEVEL: INFO
+    volumes:
+      - ./backend/secrets:/app/secrets:ro
     ports:
       - "8000:8000"
     healthcheck:

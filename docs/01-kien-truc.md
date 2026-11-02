@@ -164,6 +164,7 @@ App ──POST /api/devices/{id}/commands──► Backend
 | Device key hash SHA-256 | Key dài, ngẫu nhiên; không cần chậm như mật khẩu người dùng |
 | SQLite cho dev/test | Chạy nhanh, không cần Docker; production dùng PostgreSQL |
 | MQTT là transport chính | Nhẹ, phù hợp ESP32; HTTP chỉ là fallback |
+| Firebase FCM HTTP v1 | Push tới điện thoại; Supabase vẫn giữ tài khoản/database |
 | Rule-based AI fallback | Demo và test không phụ thuộc mạng/API key |
 | Server tính thời gian học | Chống gian lận và sai lệch đồng hồ |
 | Một thiết bị / một người dùng | Đơn giản hoá quyền riêng tư và API |
@@ -173,6 +174,7 @@ App ──POST /api/devices/{id}/commands──► Backend
 - MQTT listener tự reconnect; lỗi từng message chỉ log, không làm chết vòng lặp.
 - Firmware giữ queue 20 mẫu trong RAM; khi đầy thì bỏ mẫu cũ nhất.
 - Watchdog offline tạo thông báo `device_offline`.
+- Push FCM là best-effort: notification luôn lưu DB, lỗi FCM không làm hỏng request.
 - Cảnh báo có cooldown 10 phút để tránh spam.
 - API dùng `HTTPException` với thông điệp tiếng Việt; lỗi validation trả 422 của FastAPI.
 - Giới hạn kích thước/kiểu dữ liệu ở Pydantic (ví dụ lux 0–100000, nhiệt độ −40…80).
@@ -183,4 +185,4 @@ App ──POST /api/devices/{id}/commands──► Backend
 - Chưa có Alembic; schema tạo bằng `create_all`.
 - Chưa có horizontal scaling cho WebSocket (cần Redis pub/sub nếu chạy nhiều instance).
 - Chưa có rate limiting và audit log.
-- Chưa có push notification qua FCM/APNs.
+- Push FCM cần development build + `google-services.json`; Expo Go không nhận remote push.

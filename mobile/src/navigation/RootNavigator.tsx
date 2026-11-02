@@ -2,11 +2,13 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Text } from "react-native-paper";
 
 import { useAuthStore } from "../store/authStore";
 import { palette, spacing } from "../theme";
+import { registerPushToken, setupNotificationTapHandler } from "../notifications/push";
 import AssistantScreen from "../screens/AssistantScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import DeviceScreen from "../screens/DeviceScreen";
@@ -18,6 +20,7 @@ import PlansScreen from "../screens/PlansScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import StatsScreen from "../screens/StatsScreen";
 import type { RootStackParamList, TabParamList } from "./types";
+import { navigationRef, openNotifications } from "./navigationRef";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -84,6 +87,12 @@ const navTheme = {
 export function RootNavigator() {
   const status = useAuthStore((state) => state.status);
 
+  useEffect(() => {
+    if (status !== "signedIn") return;
+    void registerPushToken().catch(() => undefined);
+    return setupNotificationTapHandler(openNotifications);
+  }, [status]);
+
   if (status === "loading") {
     return (
       <View
@@ -104,7 +113,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         {status === "signedIn" ? (
           <>

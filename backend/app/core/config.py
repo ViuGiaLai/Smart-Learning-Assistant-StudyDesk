@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -70,6 +71,12 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     ai_timeout_seconds: float = 20.0
 
+    # Push notifications ---------------------------------------------------
+    # Firebase service account (server only). Empty = push disabled.
+    firebase_credentials_file: str | None = None
+    firebase_project_id: str | None = None
+    fcm_timeout_seconds: float = 15.0
+
     # Misc -----------------------------------------------------------------
     app_timezone: str = "Asia/Ho_Chi_Minh"
     seed_demo: bool = False
@@ -98,6 +105,12 @@ class Settings(BaseSettings):
         if self.gemini_api_key:
             return "gemini"
         return "rule_based"
+
+    @property
+    def fcm_enabled(self) -> bool:
+        return bool(self.firebase_credentials_file) and Path(
+            self.firebase_credentials_file
+        ).is_file()
 
     @property
     def cors_origin_list(self) -> list[str]:

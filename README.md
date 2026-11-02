@@ -394,12 +394,13 @@ Phân tích đầy đủ: `docs/06-danh-gia-tai-lieu.md`.
 ## 14. Giới hạn hiện tại
 
 - Chưa có Alembic; bảng tạo bằng `create_all` + vá cột tương thích khi khởi động; RLS nằm trong `supabase/migrations/`.
-- Chưa có push notification (chỉ lưu thông báo trong DB và hiển thị trong app).
+- Push FCM đã có ở backend/mobile nhưng cần **development build** + `mobile/google-services.json`;
+  Expo Go không nhận remote push.
 - Đã có hai vai trò `student` / `admin`; chưa có rate limiting và audit log cho hành động quản trị.
 - MQTT demo dùng broker công khai / ẩn danh; production cần TLS + ACL theo thiết bị.
 - LDR chỉ cho biết xu hướng sáng/tối, không dùng để đo lux chính xác.
 - Chưa có CI/CD, chưa có EAS build profile.
-- Firmware đã biên dịch thành công bằng PlatformIO nhưng chưa chạy thử trên phần cứng thật/Wokwi.
+- Firmware đã có luồng LAB3; chưa biên dịch lại trong môi trường hiện tại vì thiếu PlatformIO/arduino-cli.
 - Supabase mặc định bật xác nhận email; project chưa cấu hình SMTP riêng nên dùng email thật và có thể bị giới hạn tần suất gửi.
 - Supabase free tier có thể tạm dừng project khi không hoạt động; khi đó API trả lỗi kết nối cho tới khi mở lại dashboard.
 
@@ -491,3 +492,85 @@ Lưu ý:
 - Chat thật qua Groq (`openai/gpt-oss-120b`), lưu hội thoại vào `ai_conversations`.
 - `/api/admin/overview` trả `403` với `student`, `200` sau khi nâng `admin`.
 - Refresh token Supabase trả access token mới; token sai trả `401`.
+
+---
+
+## 17. Ba LAB: FCM + IoT cảnh báo
+
+### 17.1 Luồng tổng thể
+
+```text
+React Native ──(FCM token)──> FastAPI ──(HTTP v1)──> Firebase FCM ──> điện thoại
+ESP32/Wokwi ──(HTTP POST + device key)──> FastAPI ──> Supabase + FCM
+```
+
+Supabase vẫn quản lý tài khoản/PostgreSQL; Firebase **chỉ** dùng FCM. Service account
+chỉ nằm trên server, không có trong mobile.
+
+### 17.2 LAB2 — FastAPI gửi Push Notification
+
+Biến môi trường server (`backend/.env`):
+
+```env
+FIREBASE_CREDENTIALS_FILE=./secrets/firebase-service-account.json
+FIREBASE_PROJECT_ID=my-website-cinema
+```
+
+`FIREBASE_CREDENTIALS_FILE` để trống sẽ tắt push; thông báo vẫn được lưu DB. Backend dùng
+FCM HTTP v1 trực tiếp (PyJWT RS256 + httpx), không dùng `firebase-admin`. Token FCM được
+upsert trong bảng `device_tokens`; token bị FCM báo invalid sẽ tự xoá.
+
+| Method | Endpoint | Quyền |
+|---|---|---|
+| POST | `/api/notifications/register-device` | user — đăng ký token |
+| DELETE | `/api/notifications/register-device` | user — huỷ token |
+| POST | `/api/notifications/send` | user — gửi cho chính mình |
+| POST | `/api/notifications/send-to-user` | admin |
+| GET | `/api/notifications` | user — lịch sử |
+
+Push là best-effort: lỗi FCM không làm hỏng request tạo thông báo. Ngoài API thủ công,
+backend tự push khi có cảnh báo telemetry, thiết bị offline, hoàn thành phiên học và
+nhắc kế hoạch học sắp bắt đầu (watchdog mỗi 60 giây).
+
+### 17.3 LAB1 — React Native nhận thông báo
+
+```bash
+cd mobile
+# Tải google-services.json cho package com.smartstudy.assistant từ Firebase Console,
+# đặt tại mobile/google-services.json (đã gitignore).
+npx expo run:android        # development build, KHÔNG dùng Expo Go cho remote push
+```
+
+- App xin quyền, tạo channel Android `study-alerts`, lấy native FCM token và gửi lên
+  `/api/notifications/register-device` sau khi đăng nhập.
+- Chạm vào thông báo mở màn hình **Thông báo**; đăng xuất sẽ huỷ token khỏi server.
+- Trong màn hình Thông báo có nút **Gửi thử**. Khi chưa có `google-services.json`,
+  app vẫn chạy nhưng nút báo chưa lấy được FCM token.
+
+### 17.4 LAB3 — ESP32/Wokwi gửi cảnh báo
+
+Trong `firmware/smart_desk/config.h` (và bản Wokwi `wokwi/config.h`):
+
+```c
+#define ENABLE_HTTP_ALERTS 1
+#define API_BASE_URL "https://<vps-hoac-tunnel>"
+#define DEVICE_KEY "sk_..."        // key hiện một lần khi tạo thiết bị
+#define HTTP_ALERT_COOLDOWN_MS 60000UL
+```
+
+Firmware đọc DHT22/LDR/PIR, tự phát hiện `HIGH_TEMPERATURE`, `LOW_TEMPERATURE`,
+`HIGH_HUMIDITY`, `LOW_HUMIDITY`, `LOW_LIGHT`, `MOTION_DETECTED` rồi POST tới
+`/api/iot/alerts` với header `X-Device-Code` / `X-Device-Key`. Backend lưu reading,
+tạo notification, chống trùng theo cooldown và gửi FCM. `wokwi/sketch.ino` được đồng bộ
+với firmware; Wokwi **không truy cập được localhost/IP LAN**, nên dùng VPS public hoặc
+tunnel (cloudflared/ngrok) và dán URL vào `API_BASE_URL`.
+
+### 17.5 Kiểm chứng
+
+- `ruff` pass, `pytest` 31 pass; `npx tsc --noEmit` pass.
+- FCM OAuth đã lấy được access token bằng service account; gửi token giả trả `400
+  INVALID_ARGUMENT` — đúng nghĩa là project/API đã sẵn sàng, chỉ thiếu token thật.
+- Supabase đã tạo `device_tokens`, cột `study_plans.reminder_sent_at`; RLS bật trên 8 bảng.
+- Chưa thể gửi push tới điện thoại thật cho tới khi có `google-services.json` + dev build.
+- Chưa biên dịch lại firmware trong môi trường này vì không có PlatformIO/arduino-cli;
+  cần build trên Wokwi/PlatformIO trước khi nạp.

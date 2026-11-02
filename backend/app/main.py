@@ -11,6 +11,7 @@ from app.api import admin, assistant, auth, devices, iot, notifications, study, 
 from app.core.config import settings
 from app.db.base import SessionLocal, engine, init_db
 from app.services import iot as iot_service
+from app.services import reminders
 from app.services.mqtt import mqtt_service
 
 logging.basicConfig(
@@ -34,18 +35,42 @@ async def _offline_watchdog() -> None:
             logger.exception("Offline watchdog failed")
 
 
+async def _study_reminder_watchdog() -> None:
+    """Push reminders for plans that start within the next few minutes."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with SessionLocal() as db:
+                await reminders.send_due_study_reminders(db)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("Study reminder watchdog failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await mqtt_service.start()
     watchdog = asyncio.create_task(_offline_watchdog(), name="offline-watchdog")
-    logger.info("API ready (env=%s, mqtt=%s)", settings.environment, settings.mqtt_enabled)
+    reminder_task = asyncio.create_task(
+        _study_reminder_watchdog(), name="study-reminder-watchdog"
+    )
+    logger.info(
+        "API ready (env=%s, mqtt=%s, fcm=%s)",
+        settings.environment,
+        settings.mqtt_enabled,
+        settings.fcm_enabled,
+    )
     try:
         yield
     finally:
         watchdog.cancel()
+        reminder_task.cancel()
         with suppress(asyncio.CancelledError):
             await watchdog
+        with suppress(asyncio.CancelledError):
+            await reminder_task
         await mqtt_service.stop()
         with suppress(Exception):
             await engine.dispose()
@@ -89,5 +114,6 @@ async def health() -> dict:
         "auth_provider": settings.auth_provider,
         "ai_enabled": settings.active_ai_provider != "rule_based",
         "ai_provider": settings.active_ai_provider,
+        "push_enabled": settings.fcm_enabled,
         "timezone": settings.app_timezone,
     }

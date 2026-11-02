@@ -300,11 +300,11 @@ Không phải mọi thứ đều sai. Các quyết định sau được giữ ng
 | Hạn chế | Lý do |
 |---|---|
 | Chưa có Alembic | Ưu tiên bản chạy được; `create_all` đủ cho demo |
-| Chưa có push notification | Cần cấu hình FCM/APNs, nằm ngoài phạm vi đồ án |
+| Push FCM đã bổ sung ở backend/mobile | Cần development build + `google-services.json`; xem README mục 17 |
 | Chưa có rate limiting | Cần Redis hoặc middleware; ghi nhận là hạn chế |
 | Chưa có TLS/ACL MQTT tự động | Phụ thuộc môi trường triển khai; đã có hướng dẫn |
 | Chưa chạy thử trên phần cứng thật | Đã chạy Wokwi + backend + app thật; phần cứng chỉ cần mua linh kiện, sửa `config.h`, nạp code |
-| Chưa có EAS build | Cần tài khoản Expo; app chạy được qua Expo Go |
+| Chưa có EAS build | Cần tài khoản Expo; development build cục bộ dùng `npx expo run:android` |
 | Chưa có CI/CD | Ngoài phạm vi; có lệnh test/lint thủ công |
 
 ## 5. Kết luận

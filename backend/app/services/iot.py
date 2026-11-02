@@ -18,6 +18,7 @@ from app.db.models import (
 )
 from app.schemas.device import SensorReadingOut, TelemetryIn
 from app.services import alerts as alert_service
+from app.services import fcm
 from app.services.realtime import manager
 from app.services.sensors import estimate_lux
 from app.services.stats import clamp_device_timestamp, reading_fingerprint
@@ -43,7 +44,12 @@ def serialize_reading(reading: SensorReading) -> dict:
 
 
 async def ingest_telemetry(
-    db: AsyncSession, device: Device, payload: TelemetryIn, *, source: str = "http"
+    db: AsyncSession,
+    device: Device,
+    payload: TelemetryIn,
+    *,
+    source: str = "http",
+    evaluate_alerts: bool = True,
 ) -> IngestResult:
     """Idempotent telemetry ingestion shared by MQTT and the HTTP fallback.
 
@@ -119,7 +125,11 @@ async def ingest_telemetry(
             stored=False, duplicate=True, collection_enabled=True, reading=existing
         )
 
-    created_alerts = await alert_service.evaluate_environment_alerts(db, device, reading)
+    created_alerts = (
+        await alert_service.evaluate_environment_alerts(db, device, reading)
+        if evaluate_alerts
+        else []
+    )
     await db.commit()
 
     if was_offline:
@@ -144,6 +154,19 @@ async def ingest_telemetry(
     if created_alerts:
         # Avoid a missing-coroutine import cycle: the MQTT service is lazy here.
         await alert_service.auto_control_alert_outputs(device, created_alerts)
+
+    for alert in created_alerts:
+        await fcm.send_to_user(
+            db,
+            device.user_id,
+            str(alert["title"]),
+            str(alert["content"]),
+            {
+                "type": alert["type"],
+                "device_id": device.id,
+                "device_code": device.device_code,
+            },
+        )
 
     return IngestResult(
         stored=True,
@@ -180,20 +203,33 @@ async def mark_stale_devices_offline(db: AsyncSession) -> int:
         )
     )
     devices = list(result.scalars().all())
+    offline_notifications: list[tuple[Device, Notification]] = []
     for device in devices:
         device.status = "offline"
-        db.add(
-            Notification(
-                user_id=device.user_id,
-                device_id=device.id,
-                type="device_offline",
-                title="Thiết bị mất kết nối",
-                content=f"Thiết bị {device.name} ({device.device_code}) không gửi dữ liệu "
-                f"trong hơn {settings.device_offline_after_seconds} giây.",
-            )
+        notification = Notification(
+            user_id=device.user_id,
+            device_id=device.id,
+            type="device_offline",
+            title="Thiết bị mất kết nối",
+            content=f"Thiết bị {device.name} ({device.device_code}) không gửi dữ liệu "
+            f"trong hơn {settings.device_offline_after_seconds} giây.",
         )
+        db.add(notification)
+        offline_notifications.append((device, notification))
     if devices:
         await db.commit()
+        for device, notification in offline_notifications:
+            await fcm.send_to_user(
+                db,
+                device.user_id,
+                notification.title,
+                notification.content,
+                {
+                    "type": "device_offline",
+                    "device_id": device.id,
+                    "device_code": device.device_code,
+                },
+            )
         for device in devices:
             await broadcast_status(device)
     return len(devices)
