@@ -1,0 +1,7 @@
+# Local Wokwi simulation (VS Code extension) uses the PlatformIO build output.
+# In the Wokwi web editor you only need smart_desk.ino, config.h, diagram.json
+# and libraries.txt.
+[wokwi]
+version = 1
+firmware = ".pio/build/esp32dev/firmware.bin"
+elf = ".pio/build/esp32dev/firmware.elf"

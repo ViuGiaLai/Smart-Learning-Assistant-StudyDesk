@@ -1,0 +1,75 @@
+name: smart-learning-assistant
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: smartstudy
+      POSTGRES_PASSWORD: smartstudy
+      POSTGRES_DB: smartstudy
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      # Optional: remove this mapping if you do not need a DB client on the host.
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartstudy -d smartstudy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://smartstudy:smartstudy@db:5432/smartstudy
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-please}
+      ACCESS_TOKEN_MINUTES: "60"
+      REFRESH_TOKEN_DAYS: "14"
+      CORS_ORIGINS: "*"
+      APP_TIMEZONE: Asia/Ho_Chi_Minh
+      MQTT_ENABLED: "true"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_TOPIC_PREFIX: smartstudy
+      DEVICE_OFFLINE_AFTER_SECONDS: "90"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      SEED_DEMO: "false"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  pgdata:
+  mosquitto_data:

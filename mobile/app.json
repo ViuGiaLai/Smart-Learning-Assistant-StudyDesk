@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Smart Learning Assistant",
+    "slug": "smart-learning-assistant",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "smartstudy",
+    "splash": {
+      "backgroundColor": "#0F766E",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartstudy.assistant"
+    },
+    "android": {
+      "package": "com.smartstudy.assistant",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F766E"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": ["expo-secure-store"],
+    "extra": {
+      "apiUrl": ""
+    }
+  }
+}

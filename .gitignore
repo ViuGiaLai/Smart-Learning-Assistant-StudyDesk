@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.expo/
+dist/
+web-build/
+.expo-shared/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Databases
+*.db
+*.sqlite3
+
+# Secrets / local config
+.env
+.env.local
+firmware/smart_desk/config.h.bak
+
+# Build outputs
+firmware/.pio/
+.pio/
+build/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

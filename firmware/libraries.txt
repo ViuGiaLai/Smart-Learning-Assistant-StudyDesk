@@ -1,0 +1,6 @@
+# Libraries used by the Wokwi / Arduino build.
+# Wokwi web editor installs these automatically from libraries.txt.
+PubSubClient
+ArduinoJson
+DHT sensor library
+Adafruit Unified Sensor
