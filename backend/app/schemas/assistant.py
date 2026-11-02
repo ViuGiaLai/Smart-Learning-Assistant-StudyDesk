@@ -16,7 +16,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     answer: str
     suggestions: list[str] = Field(default_factory=list)
-    source: Literal["gemini", "rule_based"]
+    source: Literal["groq", "gemini", "rule_based"]
     model: str
     created_at: UTCDateTime
 

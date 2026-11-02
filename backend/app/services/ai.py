@@ -203,10 +203,47 @@ def _fallback_answer(context: dict[str, Any], suggestions: list[str]) -> str:
     if suggestions:
         parts.append("Gợi ý: " + " ".join(suggestions[:3]))
     parts.append(
-        "(Trả lời tự động vì chưa cấu hình GEMINI_API_KEY. Dữ liệu cảm biến chỉ mang tính "
-        "tham khảo, không phải tư vấn y tế.)"
+        "(Trả lời tự động vì chưa cấu hình GROQ_API_KEY hoặc GEMINI_API_KEY. "
+        "Dữ liệu cảm biến chỉ mang tính tham khảo, không phải tư vấn y tế.)"
     )
     return "\n\n".join(parts)
+
+
+async def _call_groq(context: dict[str, Any], message: str) -> str | None:
+    if not settings.groq_api_key:
+        return None
+    prompt = (
+        "Dữ liệu người học (JSON):\n"
+        f"{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
+        f"Câu hỏi của người học: {message}"
+    )
+    payload = {
+        "model": settings.groq_model,
+        "temperature": 0.4,
+        "max_tokens": 900,
+        "messages": [
+            {"role": "system", "content": SYSTEM_INSTRUCTION},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
+            response = await client.post(
+                f"{settings.groq_base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            logger.warning("Groq returned no choices")
+            return None
+        text = (choices[0].get("message") or {}).get("content") or ""
+        return text.strip() or None
+    except Exception as exc:  # noqa: BLE001 - fall back instead of failing chat
+        logger.warning("Groq call failed: %s", exc)
+        return None
 
 
 async def _call_gemini(context: dict[str, Any], message: str) -> str | None:
@@ -253,11 +290,29 @@ async def chat(
     context = await build_context(db, user)
     suggestions = rule_based_suggestions(context)
 
-    answer = await _call_gemini(context, message)
-    source = "gemini"
+    answer: str | None = None
+    source = "rule_based"
+    model = "rule-based"
+    providers: list[str] = []
+    if settings.ai_provider in {"auto", "groq"} and settings.groq_api_key:
+        providers.append("groq")
+    if settings.ai_provider in {"auto", "gemini"} and settings.gemini_api_key:
+        providers.append("gemini")
+
+    for provider in providers:
+        if provider == "groq":
+            answer = await _call_groq(context, message)
+            if answer:
+                source, model = "groq", settings.groq_model
+        else:
+            answer = await _call_gemini(context, message)
+            if answer:
+                source, model = "gemini", settings.gemini_model
+        if answer:
+            break
+
     if not answer:
         answer = _fallback_answer(context, suggestions)
-        source = "rule_based"
 
     conversation_id = conversation_id or str(uuid.uuid4())
     db.add(
@@ -276,6 +331,6 @@ async def chat(
         answer=answer,
         suggestions=suggestions,
         source=source,
-        model=settings.gemini_model if source == "gemini" else "rule-based",
+        model=model,
         created_at=utcnow(),
     )

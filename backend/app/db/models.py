@@ -51,9 +51,15 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    # Supabase Auth subject; NULL for accounts created with the local provider.
+    supabase_id: Mapped[str | None] = mapped_column(
+        String(36), unique=True, index=True, nullable=True
+    )
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # Supabase manages passwords, so this is NULL for Supabase-only accounts.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="student", index=True)
     daily_goal_minutes: Mapped[int] = mapped_column(Integer, default=120)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

@@ -10,16 +10,22 @@ const REFRESH_KEY = "sla.refresh_token";
 
 type AuthStatus = "loading" | "signedOut" | "signedIn";
 
+export interface SignUpResult {
+  requiresEmailConfirmation: boolean;
+}
+
 interface AuthState {
   status: AuthStatus;
   user: User | null;
   error: string | null;
+  notice: string | null;
   busy: boolean;
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  clearNotice: () => void;
 }
 
 async function persistTokens(tokens: TokenPair): Promise<void> {
@@ -43,6 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   status: "loading",
   user: null,
   error: null,
+  notice: null,
   busy: false,
 
   async bootstrap() {
@@ -69,9 +76,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ busy: true, error: null });
     try {
       const result = await api.login(email.trim(), password);
+      if (!result.tokens) {
+        throw new Error("Supabase không trả về phiên đăng nhập. Vui lòng thử lại.");
+      }
       session.setTokens(result.tokens);
       await persistTokens(result.tokens);
-      set({ status: "signedIn", user: result.user, busy: false });
+      set({ status: "signedIn", user: result.user, busy: false, notice: null });
     } catch (error) {
       set({ busy: false, error: messageOf(error) });
       throw error;
@@ -79,12 +89,29 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   async signUp(name, email, password) {
-    set({ busy: true, error: null });
+    set({ busy: true, error: null, notice: null });
     try {
       const result = await api.register(email.trim(), name.trim(), password);
+      if (!result.tokens) {
+        const notice =
+          "Đã tạo tài khoản. Hãy mở email, bấm liên kết xác nhận rồi đăng nhập lại.";
+        set({
+          busy: false,
+          status: "signedOut",
+          user: null,
+          notice,
+        });
+        return { requiresEmailConfirmation: true };
+      }
       session.setTokens(result.tokens);
       await persistTokens(result.tokens);
-      set({ status: "signedIn", user: result.user, busy: false });
+      set({
+        status: "signedIn",
+        user: result.user,
+        busy: false,
+        notice: null,
+      });
+      return { requiresEmailConfirmation: false };
     } catch (error) {
       set({ busy: false, error: messageOf(error) });
       throw error;
@@ -94,11 +121,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   async signOut() {
     session.clear();
     await clearTokens();
-    set({ status: "signedOut", user: null, error: null });
+    set({ status: "signedOut", user: null, error: null, notice: null });
   },
 
   clearError() {
     set({ error: null });
+  },
+
+  clearNotice() {
+    set({ notice: null });
   },
 }));
 

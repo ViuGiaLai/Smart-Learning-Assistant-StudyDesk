@@ -44,12 +44,18 @@ Không cần xác thực.
   "status": "ok",
   "environment": "development",
   "mqtt_connected": true,
-  "ai_enabled": false,
+  "auth_provider": "supabase",
+  "ai_enabled": true,
+  "ai_provider": "groq",
   "timezone": "Asia/Ho_Chi_Minh"
 }
 ```
 
 ## 3. Xác thực
+
+Khi `AUTH_PROVIDER=supabase`, backend chuyển register/login/refresh sang Supabase Auth.
+Access token do Supabase cấp được xác thực bằng JWKS (ES256); client vẫn dùng cùng các
+endpoint dưới đây. Với `AUTH_PROVIDER=local` (test/offline), backend tự cấp JWT như trước.
 
 ### `POST /api/auth/register`
 
@@ -71,8 +77,10 @@ Phản hồi `201`:
     "id": "uuid",
     "email": "sinhvien@example.com",
     "name": "Nguyễn Văn A",
+    "role": "student",
     "created_at": "2026-11-01T03:00:00Z"
   },
+  "requires_email_confirmation": false,
   "tokens": {
     "access_token": "eyJ...",
     "refresh_token": "eyJ...",
@@ -81,6 +89,18 @@ Phản hồi `201`:
   }
 }
 ```
+
+Nếu Supabase bật **Confirm email**, tài khoản được tạo nhưng chưa có phiên:
+
+```json
+{
+  "user": { "id": "uuid", "email": "sinhvien@example.com", "name": "Nguyễn Văn A", "role": "student" },
+  "requires_email_confirmation": true,
+  "tokens": null
+}
+```
+
+Lúc này app phải thông báo kiểm tra hộp thư; đăng nhập trước khi xác nhận trả `403`.
 
 ### `POST /api/auth/login`
 
@@ -101,6 +121,19 @@ Trả về `TokenPair` mới. Refresh token hết hạn/không hợp lệ → `4
 ### `GET /api/auth/me`
 
 Trả về `UserOut` của người dùng hiện tại.
+
+### Quản trị (chỉ `role=admin`)
+
+| Method | Đường dẫn | Mô tả |
+|---|---|---|
+| GET | `/api/admin/overview` | Tổng số user/admin/thiết bị/phiên/reading + 10 user mới nhất |
+| PATCH | `/api/admin/users/{user_id}/role` | Đổi vai trò `student` ↔ `admin` |
+
+```json
+{ "role": "admin" }
+```
+
+User thường gọi các endpoint này nhận `403`. Admin không thể tự thu hồi quyền của mình (`400`).
 
 ## 4. Thiết bị
 
@@ -447,13 +480,14 @@ Loại thông báo: `temperature_high`, `temperature_low`, `humidity_high`, `hum
   "suggestions": [
     "Ánh sáng khoảng 98 lux, dưới ngưỡng 150 lux — hãy bật đèn bàn."
   ],
-  "source": "gemini",
-  "model": "gemini-2.5-flash",
+  "source": "groq",
+  "model": "openai/gpt-oss-120b",
   "created_at": "2026-11-01T03:25:00Z"
 }
 ```
 
-- `source=gemini` khi gọi thành công; `source=rule_based` khi thiếu key hoặc provider lỗi.
+- `source=groq` là mặc định; `source=gemini` khi Groq lỗi và có Gemini key;
+  `source=rule_based` khi thiếu cả hai key hoặc cả hai provider lỗi.
 - Backend tự dựng context từ dữ liệu cảm biến, thống kê học tập và kế hoạch.
 
 ### `GET /api/assistant/context`
@@ -482,6 +516,7 @@ ws://localhost:8000/ws/devices/{device_id}?token=<access_token>
 ```
 
 Yêu cầu `device_id` thuộc người dùng của token.
+`token` có thể là JWT local hoặc access token Supabase.
 
 Server gửi ngay:
 

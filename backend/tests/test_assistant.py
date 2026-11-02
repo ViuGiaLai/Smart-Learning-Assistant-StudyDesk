@@ -53,3 +53,26 @@ def test_chat_uses_rule_based_fallback_without_gemini_key(
         headers=auth,
     )
     assert follow_up.json()["conversation_id"] == body["conversation_id"]
+
+
+def test_chat_prefers_groq_when_configured(
+    client: TestClient, auth: dict, monkeypatch
+) -> None:
+    from app.services import ai
+
+    async def fake_groq(context: dict, message: str) -> str:
+        return "Trả lời từ Groq"
+
+    monkeypatch.setattr(ai.settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(ai, "_call_groq", fake_groq)
+
+    response = client.post(
+        "/api/assistant/chat",
+        json={"message": "Xin chào"},
+        headers=auth,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source"] == "groq"
+    assert body["model"] == ai.settings.groq_model
+    assert body["answer"] == "Trả lời từ Groq"

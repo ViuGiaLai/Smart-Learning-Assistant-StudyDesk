@@ -59,3 +59,38 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_supabase_register_waits_for_email_confirmation(
+    client: TestClient, monkeypatch
+) -> None:
+    from app.core.config import settings
+    from app.services import supabase_auth
+
+    async def fake_sign_up(email: str, password: str, name: str) -> dict:
+        return {
+            "id": "8f14e45f-ceea-467f-a8da-9f4b2c3d4e5f",
+            "email": email,
+            "user_metadata": {"name": name},
+            "created_at": "2026-11-02T00:00:00Z",
+        }
+
+    monkeypatch.setattr(settings, "auth_provider", "supabase")
+    monkeypatch.setattr(settings, "supabase_url", "https://demo.supabase.co")
+    monkeypatch.setattr(settings, "supabase_publishable_key", "sb_publishable_test")
+    monkeypatch.setattr(supabase_auth, "sign_up", fake_sign_up)
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "new@example.com",
+            "name": "Người mới",
+            "password": "password123",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["tokens"] is None
+    assert body["requires_email_confirmation"] is True
+    assert body["user"]["name"] == "Người mới"
+    assert body["user"]["role"] == "student"

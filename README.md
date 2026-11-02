@@ -1,7 +1,7 @@
 # Smart Learning Assistant
 
 Trợ lý học tập thông minh gồm **ứng dụng di động React Native**, **backend FastAPI**,
-**cơ sở dữ liệu PostgreSQL**, **MQTT + WebSocket** và **firmware ESP32** đọc cảm biến
+**Supabase PostgreSQL + Supabase Auth**, **MQTT + WebSocket** và **firmware ESP32** đọc cảm biến
 môi trường bàn học (nhiệt độ, độ ẩm, ánh sáng, chuyển động).
 
 > Đây là bản triển khai mới, độc lập với thư mục `Smart-Study-Assistant` sẵn có.
@@ -13,13 +13,14 @@ môi trường bàn học (nhiệt độ, độ ẩm, ánh sáng, chuyển độ
 
 | Nhóm | Chức năng |
 |---|---|
-| Tài khoản | Đăng ký / đăng nhập, JWT access + refresh, lưu token bằng SecureStore |
+| Tài khoản | Đăng ký / đăng nhập qua **Supabase Auth**, xác nhận email, access token ES256 xác thực bằng JWKS; refresh token; lưu token bằng SecureStore |
+| Phân quyền | Vai trò `student` / `admin`; mỗi người chỉ thấy kế hoạch, lịch sử học và thiết bị của mình; `/api/admin/*` yêu cầu admin |
 | Học tập | Phiên Pomodoro, tạm dừng / tiếp tục, thời gian do **server** tính, thống kê 7 ngày, mục tiêu ngày, kế hoạch học |
 | Thiết bị | Đăng ký ESP32, sinh device key (chỉ hiện một lần), đổi ngưỡng, bật/tắt thu thập dữ liệu, gửi lệnh LED / buzzer / ping |
 | IoT | Nhận telemetry qua MQTT (chính) hoặc HTTP (dự phòng), chống trùng bằng `message_id`, tự đánh dấu offline, LWT |
 | Môi trường | Nhiệt độ, độ ẩm, lux ước lượng từ LDR, chuyển động; cảnh báo có cooldown; tự bật LED khi vượt ngưỡng |
 | Realtime | WebSocket có xác thực JWT và kiểm tra quyền sở hữu thiết bị |
-| AI | Gemini API chạy **phía server**; nếu chưa có key thì dùng gợi ý theo luật (rule-based) |
+| AI | **Groq** (chính) + Gemini dự phòng + gợi ý theo luật; API key chỉ nằm ở server |
 | Firmware | ESP32 + DHT22 + PIR + LDR + LED + buzzer, queue gửi lại khi mất mạng, cấu hình Wokwi kèm theo |
 
 ---
@@ -32,13 +33,13 @@ môi trường bàn học (nhiệt độ, độ ẩm, ánh sáng, chuyển độ
 │  Paper + Zustand     │ ◄──────────────────────── │  REST + WebSocket       │
 └──────────────────────┘                           │                         │
                                                    │  SQLAlchemy 2 async     │
-┌──────────────────────┐        MQTT 1883          │  Gemini REST (httpx)    │
+┌──────────────────────┐        MQTT 1883          │  Groq REST (httpx)      │
 │  ESP32 / Wokwi       │ ────────────────────────► │                         │
 │  DHT22 PIR LDR       │ ◄──────────────────────── │                         │
 └──────────────────────┘   telemetry/command/status└───────────┬─────────────┘
                                                                │
                                                     ┌──────────▼──────────┐
-                                                    │ PostgreSQL          │
+                                                    │ Supabase PostgreSQL │
                                                     │ Mosquitto (MQTT)    │
                                                     └─────────────────────┘
 ```
@@ -59,15 +60,15 @@ Luồng dữ liệu:
 
 ```text
 smart-learning-assistant/
-├── backend/                 FastAPI, SQLAlchemy, MQTT, Gemini, test
+├── backend/                 FastAPI, SQLAlchemy, Supabase Auth, MQTT, Groq, test
 │   ├── app/
-│   │   ├── api/             auth, devices, iot, study, notifications, assistant, ws
+│   │   ├── api/             auth, admin, devices, iot, study, notifications, assistant, ws
 │   │   ├── core/            config, security, time
 │   │   ├── db/              models, session
 │   │   ├── schemas/         Pydantic request/response
-│   │   └── services/        iot, mqtt, sensors, alerts, stats, ai, realtime
+│   │   └── services/        iot, mqtt, sensors, alerts, stats, ai, realtime, supabase_auth
 │   ├── scripts/seed_demo.py
-│   ├── tests/               22 test pytest
+│   ├── tests/               25 test pytest
 │   └── Dockerfile
 ├── mobile/                  Expo + React Native + TypeScript
 │   └── src/                 api, components, hooks, navigation, screens, store
@@ -84,6 +85,7 @@ smart-learning-assistant/
 ├── tools/serve_wokwi.py     Phục vụ thư mục wokwi/ qua HTTP (CORS)
 ├── mosquitto/mosquitto.conf
 ├── docker-compose.yml
+├── supabase/migrations/     SQL bật RLS và chặn truy cập trực tiếp bằng publishable key
 └── docs/                    Kiến trúc, phần cứng, API, Wokwi, demo, đánh giá tài liệu
 ```
 
@@ -320,7 +322,10 @@ trợ lý AI fallback và WebSocket.
 
 | Hạng mục | Kết quả |
 |---|---|
-| `pytest` | 22 passed |
+| `pytest` | 25 passed |
+| Supabase thật (auth + DB) | Đăng nhập Supabase, tạo kế hoạch / thiết bị / phiên học, refresh token: OK |
+| Groq thật | `source=groq`, model `openai/gpt-oss-120b`, trả lời 1.301 ký tự |
+| RLS Supabase | PostgREST với publishable key trả `401 permission denied` |
 | `ruff check` | All checks passed |
 | `tsc --noEmit` | Không lỗi |
 | `expo export --platform android` | Bundle thành công (1254 modules) |
@@ -335,12 +340,17 @@ trợ lý AI fallback và WebSocket.
 | Biến | Ý nghĩa |
 |---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://...` hoặc `sqlite+aiosqlite:///...` |
+| `AUTH_PROVIDER` | `local` (mặc định) hoặc `supabase` |
+| `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` | Dùng khi `AUTH_PROVIDER=supabase`; **chỉ ở backend** |
+| `SUPABASE_JWT_SECRET` | Chỉ project cũ ký access token bằng HS256; project mới dùng JWKS ES256 |
 | `JWT_SECRET` | Bắt buộc đổi khi triển khai; dùng chuỗi ngẫu nhiên ≥ 32 byte |
 | `MQTT_HOST` / `MQTT_PORT` | Địa chỉ broker; backend và firmware phải trỏ cùng broker |
 | `MQTT_USE_TLS` | Bật TLS (thường cổng 8883) |
 | `DEVICE_OFFLINE_AFTER_SECONDS` | Mặc định 90 giây |
 | `ALERT_COOLDOWN_SECONDS` | Chống spam cảnh báo, mặc định 600 giây |
-| `GEMINI_API_KEY` | **Chỉ đặt ở backend**, không đưa vào app di động |
+| `GROQ_API_KEY` / `GROQ_MODEL` | **Chỉ đặt ở backend**, không đưa vào app di động; mặc định `openai/gpt-oss-120b` |
+| `AI_PROVIDER` | `auto` (Groq → Gemini → rule-based), `groq` hoặc `gemini` |
+| `GEMINI_API_KEY` | Dự phòng khi Groq lỗi hoặc `AI_PROVIDER=gemini` |
 | `APP_TIMEZONE` | Mặc định `Asia/Ho_Chi_Minh`, dùng cho thống kê theo ngày |
 
 Xem đầy đủ trong `backend/.env.example`.
@@ -383,13 +393,15 @@ Phân tích đầy đủ: `docs/06-danh-gia-tai-lieu.md`.
 
 ## 14. Giới hạn hiện tại
 
-- Chưa có Alembic migration; bảng tạo bằng `create_all` khi khởi động.
+- Chưa có Alembic; bảng tạo bằng `create_all` + vá cột tương thích khi khởi động; RLS nằm trong `supabase/migrations/`.
 - Chưa có push notification (chỉ lưu thông báo trong DB và hiển thị trong app).
-- Chưa có phân quyền quản trị, chưa có rate limiting.
+- Đã có hai vai trò `student` / `admin`; chưa có rate limiting và audit log cho hành động quản trị.
 - MQTT demo dùng broker công khai / ẩn danh; production cần TLS + ACL theo thiết bị.
 - LDR chỉ cho biết xu hướng sáng/tối, không dùng để đo lux chính xác.
 - Chưa có CI/CD, chưa có EAS build profile.
 - Firmware đã biên dịch thành công bằng PlatformIO nhưng chưa chạy thử trên phần cứng thật/Wokwi.
+- Supabase mặc định bật xác nhận email; project chưa cấu hình SMTP riêng nên dùng email thật và có thể bị giới hạn tần suất gửi.
+- Supabase free tier có thể tạm dừng project khi không hoạt động; khi đó API trả lỗi kết nối cho tới khi mở lại dashboard.
 
 ---
 
@@ -404,3 +416,78 @@ Phân tích đầy đủ: `docs/06-danh-gia-tai-lieu.md`.
 | `docs/05-demo.md` | Kịch bản demo và kiểm thử |
 | `docs/06-danh-gia-tai-lieu.md` | Đánh giá tài liệu gốc và các sửa đổi |
 | `docs/07-bao-mat-va-rieng-tu.md` | Bảo mật, quyền riêng tư, khuyến nghị triển khai |
+
+---
+
+## 16. Supabase Auth + PostgreSQL và Groq
+
+### 16.1 Cấu hình
+
+`backend/.env` (đã gitignore) đang trỏ tới project Supabase và Groq. Các biến chính:
+
+| Biến | Ghi chú |
+|---|---|
+| `DATABASE_URL` | Session pooler của Supabase, cổng `5432`, có `ssl=require` tự động |
+| `AUTH_PROVIDER=supabase` | Bật xác thực qua Supabase Auth |
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | Publishable key, chỉ dùng phía server |
+| `GROQ_API_KEY` | Groq key, chỉ dùng phía server |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` |
+
+**Vì sao dùng pooler?** Host `db.<project-ref>.supabase.co` chỉ có bản ghi IPv6. Máy/mạng chỉ IPv4
+sẽ không phân giải được; dùng **Session pooler** `aws-0-<region>.pooler.supabase.com:5432` với
+user `postgres.<project-ref>`. Mật khẩu có ký tự đặc biệt phải URL-encode (ví dụ `@` → `%40`).
+
+### 16.2 Luồng đăng nhập
+
+1. App gọi `POST /api/auth/register`; backend gọi Supabase GoTrue signup.
+2. Project đang bật **Confirm email**: response là `201` với `tokens: null` và
+   `requires_email_confirmation: true`. App hiển thị thông báo kiểm tra hộp thư.
+3. Người dùng bấm liên kết xác nhận, sau đó đăng nhập. Backend gọi GoTrue, nhận cặp
+   access/refresh token và đồng bộ profile vào bảng `public.users`.
+4. Mọi request API dùng access token Supabase. Backend xác thực chữ ký ES256 qua JWKS,
+   kiểm tra `iss`/`aud`, rồi ánh xạ `sub` sang user nội bộ.
+5. Refresh token được GoTrue xoay vòng qua `POST /api/auth/refresh`.
+
+Lưu ý:
+
+- Supabase từ chối domain dành riêng như `example.com` (`email_address_invalid`); hãy dùng email thật.
+- Muốn bỏ bước xác nhận khi demo: Dashboard → **Authentication → Sign In / Providers → Email**,
+  tắt **Confirm email**. Production nên giữ bật và cấu hình SMTP + URL Configuration.
+- Đổi Site URL / Redirect URLs trong Supabase cho khớp địa chỉ web/app của bạn.
+
+### 16.3 Phân quyền và RLS
+
+- Mọi bảng nghiệp vụ đều có `user_id`; backend kiểm tra quyền sở hữu ở từng endpoint.
+- `users.role` mặc định `student`. Endpoint `/api/admin/overview` và
+  `/api/admin/users/{id}/role` chỉ cho `admin`.
+- Nâng quyền thủ công (SQL Editor của Supabase):
+
+  ```sql
+  update public.users set role = 'admin' where email = 'ban@example.com';
+  ```
+
+- `supabase/migrations/20261102000000_restrict_public_access.sql` bật RLS và thu hồi quyền của
+  `anon`/`authenticated` trên toàn bộ bảng ứng dụng. Backend kết nối bằng role `postgres` nên
+  vẫn hoạt động; publishable key không đọc được dữ liệu qua PostgREST (đã kiểm chứng `401`).
+- Nếu sau này muốn dùng `supabase-js` trực tiếp, thay các lệnh `revoke` bằng policy
+  `user_id = auth.uid()::text` thay vì mở lại toàn bộ quyền.
+
+### 16.4 Groq
+
+- Backend chọn provider theo `AI_PROVIDER=auto`: Groq trước, Gemini nếu Groq lỗi, cuối cùng là rule-based.
+- Key chỉ nằm trong `backend/.env` / biến môi trường server, không bao giờ gửi xuống mobile.
+- Kiểm tra nhanh:
+
+  ```powershell
+  curl.exe -s http://localhost:8010/health
+  # {"ai_provider":"groq","auth_provider":"supabase",...}
+  ```
+
+### 16.5 Đã kiểm chứng với project thật
+
+- Đăng nhập Supabase → `/api/auth/me` trả đúng email và role.
+- Tạo thiết bị, kế hoạch, phiên học; thống kê và lịch sử hội thoại ghi vào Supabase.
+- Chat thật qua Groq (`openai/gpt-oss-120b`), lưu hội thoại vào `ai_conversations`.
+- `/api/admin/overview` trả `403` với `student`, `200` sau khi nâng `admin`.
+- Refresh token Supabase trả access token mới; token sai trả `401`.

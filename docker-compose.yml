@@ -53,6 +53,9 @@ services:
       DEVICE_OFFLINE_AFTER_SECONDS: "90"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      AI_PROVIDER: ${AI_PROVIDER:-auto}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
       SEED_DEMO: "false"
       LOG_LEVEL: INFO
     ports:

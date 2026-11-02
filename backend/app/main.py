@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assistant, auth, devices, iot, notifications, study, ws
+from app.api import admin, assistant, auth, devices, iot, notifications, study, ws
 from app.core.config import settings
 from app.db.base import SessionLocal, engine, init_db
 from app.services import iot as iot_service
@@ -70,6 +70,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(devices.router, prefix=settings.api_prefix)
 app.include_router(iot.router, prefix=settings.api_prefix)
 app.include_router(study.router, prefix=settings.api_prefix)
@@ -85,6 +86,8 @@ async def health() -> dict:
         "status": "ok",
         "environment": settings.environment,
         "mqtt_connected": mqtt_service.connected,
-        "ai_enabled": bool(settings.gemini_api_key),
+        "auth_provider": settings.auth_provider,
+        "ai_enabled": settings.active_ai_provider != "rule_based",
+        "ai_provider": settings.active_ai_provider,
         "timezone": settings.app_timezone,
     }

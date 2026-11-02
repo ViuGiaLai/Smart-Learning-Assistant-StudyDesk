@@ -24,10 +24,21 @@ class Settings(BaseSettings):
     )
 
     # Auth -----------------------------------------------------------------
+    # "local" keeps the original email/password + JWT flow (tests, offline dev).
+    # "supabase" delegates credentials to Supabase Auth; this API verifies the
+    # resulting access tokens and still returns its own UserOut profile.
+    auth_provider: Literal["local", "supabase"] = "local"
     jwt_secret: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
     refresh_token_days: int = 14
+
+    # Supabase -------------------------------------------------------------
+    supabase_url: str | None = None
+    supabase_publishable_key: str | None = None
+    # Only needed for legacy projects that still sign access tokens with HS256.
+    supabase_jwt_secret: str | None = None
+    supabase_timeout_seconds: float = 20.0
 
     # CORS: comma separated list, "*" allows all (dev only)
     cors_origins: str = "*"
@@ -49,6 +60,11 @@ class Settings(BaseSettings):
     default_sample_interval_seconds: int = 10
 
     # AI -------------------------------------------------------------------
+    # "auto" prefers Groq, then Gemini, then the rule-based fallback.
+    ai_provider: Literal["auto", "groq", "gemini"] = "auto"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
@@ -58,6 +74,30 @@ class Settings(BaseSettings):
     app_timezone: str = "Asia/Ho_Chi_Minh"
     seed_demo: bool = False
     log_level: str = Field(default="INFO")
+
+    @property
+    def supabase_auth_enabled(self) -> bool:
+        return (
+            self.auth_provider == "supabase"
+            and bool(self.supabase_url)
+            and bool(self.supabase_publishable_key)
+        )
+
+    @property
+    def supabase_auth_base_url(self) -> str:
+        return (self.supabase_url or "").rstrip("/")
+
+    @property
+    def active_ai_provider(self) -> str:
+        if self.ai_provider == "groq":
+            return "groq" if self.groq_api_key else "rule_based"
+        if self.ai_provider == "gemini":
+            return "gemini" if self.gemini_api_key else "rule_based"
+        if self.groq_api_key:
+            return "groq"
+        if self.gemini_api_key:
+            return "gemini"
+        return "rule_based"
 
     @property
     def cors_origin_list(self) -> list[str]:

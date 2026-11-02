@@ -2,6 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  role: "student" | "admin";
   created_at: string;
 }
 
@@ -14,7 +15,8 @@ export interface TokenPair {
 
 export interface AuthResponse {
   user: User;
-  tokens: TokenPair;
+  tokens: TokenPair | null;
+  requires_email_confirmation: boolean;
 }
 
 export interface DeviceSettings {
@@ -145,10 +147,12 @@ export interface ChatResponse {
   conversation_id: string;
   answer: string;
   suggestions: string[];
-  source: "gemini" | "rule_based";
+  source: ChatSource;
   model: string;
   created_at: string;
 }
+
+export type ChatSource = "groq" | "gemini" | "rule_based";
 
 export interface AssistantContext {
   latest_temperature: number | null;

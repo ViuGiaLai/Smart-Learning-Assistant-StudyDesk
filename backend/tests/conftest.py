@@ -8,6 +8,9 @@ os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("MQTT_ENABLED", "false")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_smartstudy.db")
+os.environ.setdefault("AUTH_PROVIDER", "local")
+os.environ.setdefault("SUPABASE_URL", "")
+os.environ.setdefault("GROQ_API_KEY", "")
 os.environ.setdefault("GEMINI_API_KEY", "")
 # Pin the topic prefix: the demo .env uses a random prefix, and the API tests
 # assert on the topic strings returned by /api/devices.

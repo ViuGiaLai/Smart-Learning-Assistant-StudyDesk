@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 
-import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
-from app.core.security import decode_token
+from app.api.deps import resolve_user_from_token
 from app.db.base import SessionLocal
 from app.db.models import Device, SensorReading
 from app.schemas.device import SensorReadingOut
@@ -26,15 +25,14 @@ async def device_websocket(websocket: WebSocket, device_id: str, token: str | No
     if not token:
         await websocket.close(code=4401)
         return
-    try:
-        payload = decode_token(token, "access")
-    except jwt.PyJWTError:
-        await websocket.close(code=4401)
-        return
 
     async with SessionLocal() as db:
+        user = await resolve_user_from_token(db, token)
+        if user is None:
+            await websocket.close(code=4401)
+            return
         device = await db.get(Device, device_id)
-        if device is None or device.user_id != payload["sub"]:
+        if device is None or device.user_id != user.id:
             await websocket.close(code=4403)
             return
 

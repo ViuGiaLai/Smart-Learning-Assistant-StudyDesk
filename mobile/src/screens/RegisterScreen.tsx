@@ -39,7 +39,10 @@ export default function RegisterScreen({ navigation }: Props) {
       return;
     }
     try {
-      await signUp(name, email, password);
+      const result = await signUp(name, email, password);
+      if (result.requiresEmailConfirmation) {
+        navigation.navigate("Login");
+      }
     } catch {
       // Store exposes the error message.
     }

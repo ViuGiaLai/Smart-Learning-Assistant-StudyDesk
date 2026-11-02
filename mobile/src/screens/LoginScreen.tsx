@@ -16,6 +16,7 @@ export default function LoginScreen({ navigation }: Props) {
   const signIn = useAuthStore((state) => state.signIn);
   const busy = useAuthStore((state) => state.busy);
   const error = useAuthStore((state) => state.error);
+  const notice = useAuthStore((state) => state.notice);
   const clearError = useAuthStore((state) => state.clearError);
 
   const [email, setEmail] = useState("");
@@ -95,6 +96,12 @@ export default function LoginScreen({ navigation }: Props) {
             activeOutlineColor={palette.primary}
             onSubmitEditing={() => void submit()}
           />
+
+          {notice ? (
+            <HelperText type="info" visible style={styles.error}>
+              {notice}
+            </HelperText>
+          ) : null}
 
           {localError || error ? (
             <HelperText type="error" visible style={styles.error}>

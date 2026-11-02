@@ -6,6 +6,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import { Chip, IconButton, Text, TextInput } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
+import type { ChatSource } from "../api/types";
 import { PageHeader } from "../components/PageHeader";
 import { Tag } from "../components/ui";
 import type { TabParamList } from "../navigation/types";
@@ -17,8 +18,14 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
-  source?: "gemini" | "rule_based";
+  source?: ChatSource;
 }
+
+const SOURCE_LABELS: Record<ChatSource, string> = {
+  groq: "Groq",
+  gemini: "Gemini",
+  rule_based: "Gợi ý nội bộ",
+};
 
 const WELCOME =
   "Chào bạn! Mình là trợ lý học tập. Mình có thể giúp bạn lập kế hoạch, giải thích kiến thức, tạo câu hỏi ôn tập và gợi ý cải thiện môi trường bàn học dựa trên cảm biến.";
@@ -130,7 +137,7 @@ export default function AssistantScreen(_props: Props) {
               </Text>
               {message.role === "assistant" && message.source ? (
                 <Text variant="labelSmall" style={styles.source}>
-                  {message.source === "gemini" ? "Gemini" : "Gợi ý nội bộ"}
+                  {SOURCE_LABELS[message.source]}
                 </Text>
               ) : null}
             </View>

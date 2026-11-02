@@ -17,7 +17,7 @@ const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
 const extraUrl = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl;
 
 /** Base REST URL. Override with EXPO_PUBLIC_API_URL for production builds. */
-export const API_URL = (configured || extraUrl || `http://${inferHost()}:8000`).replace(
+export const API_URL = (configured || extraUrl || `http://${inferHost()}:8010`).replace(
   /\/$/,
   "",
 );

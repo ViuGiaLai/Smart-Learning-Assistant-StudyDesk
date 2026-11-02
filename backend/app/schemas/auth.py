@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.schemas.common import UTCDateTime
@@ -33,9 +35,12 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr
     name: str
+    role: Literal["student", "admin"] = "student"
     created_at: UTCDateTime
 
 
 class AuthResponse(BaseModel):
     user: UserOut
-    tokens: TokenPair
+    # Null when Supabase requires email confirmation before issuing a session.
+    tokens: TokenPair | None = None
+    requires_email_confirmation: bool = False
