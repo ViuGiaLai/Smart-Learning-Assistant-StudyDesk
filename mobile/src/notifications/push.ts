@@ -1,11 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Device from "expo-device";
+import Constants, { AppOwnership } from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import { api } from "../api/client";
 
 const TOKEN_KEY = "sla.fcm_token";
+const ANDROID_CHANNEL_ID = "study-alerts-v2";
 let currentToken: string | null = null;
 
 Notifications.setNotificationHandler({
@@ -19,12 +21,12 @@ Notifications.setNotificationHandler({
 
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
-  await Notifications.setNotificationChannelAsync("study-alerts", {
+  // Keep the channel definition minimal. Some Android/Expo combinations
+  // reject optional sound or light values when their native resource is null.
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
     name: "Cảnh báo học tập",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
-    lightColor: "#0F766E",
-    sound: "default",
   });
 }
 
@@ -35,9 +37,23 @@ async function ensureAndroidChannel(): Promise<void> {
  * Go, and Android needs mobile/google-services.json from the Firebase console.
  */
 export async function registerPushToken(): Promise<string | null> {
-  if (Platform.OS === "web" || !Device.isDevice) return null;
+  // Expo Go cannot access native remote push APIs. A development build or
+  // standalone APK is required for FCM registration.
+  if (
+    Platform.OS === "web" ||
+    !Device.isDevice ||
+    Constants.appOwnership === AppOwnership.Expo
+  ) {
+    return null;
+  }
 
-  await ensureAndroidChannel();
+  try {
+    await ensureAndroidChannel();
+  } catch (error) {
+    // Push registration can continue without a custom channel. Android will
+    // use the app's configured default channel for incoming FCM messages.
+    console.warn("Không tạo được kênh thông báo Android:", error);
+  }
   const existing = await Notifications.getPermissionsAsync();
   let status = existing.status;
   if (status !== "granted") {

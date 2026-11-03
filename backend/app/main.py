@@ -56,9 +56,15 @@ async def lifespan(app: FastAPI):
     reminder_task = asyncio.create_task(
         _study_reminder_watchdog(), name="study-reminder-watchdog"
     )
+    if settings.jwt_secret == "dev-secret-change-me":
+        logger.warning(
+            "JWT_SECRET is still the development default. Set a random value "
+            "before exposing this API on the internet."
+        )
     logger.info(
-        "API ready (env=%s, mqtt=%s, fcm=%s)",
+        "API ready (env=%s, auth=%s, mqtt=%s, fcm=%s)",
         settings.environment,
+        settings.auth_provider,
         settings.mqtt_enabled,
         settings.fcm_enabled,
     )

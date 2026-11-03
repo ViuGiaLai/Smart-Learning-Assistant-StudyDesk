@@ -11,6 +11,7 @@ import asyncio
 import logging
 from functools import lru_cache
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import jwt
@@ -79,10 +80,24 @@ def _raise_for_auth_failure(response: httpx.Response) -> None:
     elif code in {"user_already_exists", "email_exists"} or "already registered" in text:
         detail = "Email đã được đăng ký"
         status = 409
+    elif code == "same_password" or "different from the old" in text:
+        detail = "Mật khẩu mới phải khác mật khẩu hiện tại"
+        status = 422
     elif code in {"weak_password"} or ("password" in text and "least" in text):
         detail = "Mật khẩu chưa đáp ứng yêu cầu bảo mật tối thiểu"
         status = 422
-    elif response.status_code == 429 or code == "over_email_send_rate_limit":
+    elif code in {"bad_jwt", "invalid_token", "otp_expired", "invalid_claims"} or (
+        "invalid jwt" in text or "token is malformed" in text or "token has expired" in text
+    ):
+        detail = (
+            "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. "
+            "Hãy yêu cầu gửi lại email."
+        )
+        status = 401
+    elif response.status_code == 429 or code in {
+        "over_email_send_rate_limit",
+        "over_request_rate_limit",
+    }:
         detail = "Quá nhiều yêu cầu xác thực. Vui lòng thử lại sau ít phút."
         status = 429
     else:
@@ -95,12 +110,23 @@ def _raise_for_auth_failure(response: httpx.Response) -> None:
     raise SupabaseAuthError(status, detail)
 
 
-async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _request(
+    method: str,
+    path: str,
+    payload: dict[str, Any],
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
     base = _require_config()
+    headers = _headers()
+    if access_token:
+        # User-scoped calls (reset password) must use the user JWT, not the
+        # publishable key.
+        headers["Authorization"] = f"Bearer {access_token}"
     try:
         async with httpx.AsyncClient(timeout=settings.supabase_timeout_seconds) as client:
-            response = await client.post(
-                f"{base}/auth/v1{path}", headers=_headers(), json=payload
+            response = await client.request(
+                method, f"{base}/auth/v1{path}", headers=headers, json=payload
             )
     except httpx.HTTPError as exc:
         raise SupabaseAuthError(
@@ -117,9 +143,22 @@ async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-async def sign_up(email: str, password: str, name: str) -> dict[str, Any]:
+async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return await _request("POST", path, payload)
+
+
+
+async def sign_up(
+    email: str,
+    password: str,
+    name: str,
+    redirect_to: str | None = None,
+) -> dict[str, Any]:
+    path = "/signup"
+    if redirect_to:
+        path = f"{path}?redirect_to={quote(redirect_to, safe='')}"
     return await _post(
-        "/signup",
+        path,
         {"email": email, "password": password, "data": {"name": name}},
     )
 
@@ -134,6 +173,28 @@ async def refresh(refresh_token: str) -> dict[str, Any]:
     return await _post(
         "/token?grant_type=refresh_token", {"refresh_token": refresh_token}
     )
+
+
+async def recover(email: str, redirect_to: str | None = None) -> dict[str, Any]:
+    """Send a password recovery email (GoTrue intentionally returns 200 for
+    unknown addresses so the endpoint cannot be used to enumerate accounts)."""
+    path = "/recover"
+    if redirect_to:
+        path = f"{path}?redirect_to={quote(redirect_to, safe='')}"
+    return await _post(path, {"email": email})
+
+
+async def resend_confirmation(email: str) -> dict[str, Any]:
+    """Re-send the "confirm your email" message for an unconfirmed signup."""
+    return await _post("/resend", {"type": "signup", "email": email})
+
+
+async def update_password(access_token: str, new_password: str) -> dict[str, Any]:
+    """Set a new password using the short-lived recovery access token."""
+    return await _request(
+        "PUT", "/user", {"password": new_password}, access_token=access_token
+    )
+
 
 
 # ---------------------------------------------------------------------------

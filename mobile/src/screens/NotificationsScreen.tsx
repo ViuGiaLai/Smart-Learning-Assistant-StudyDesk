@@ -85,7 +85,8 @@ export default function NotificationsScreen({ navigation }: Props) {
       const token = await registerPushToken();
       if (!token) {
         setPushMessage(
-          "Chưa lấy được FCM token. Cần development build + google-services.json và quyền thông báo.",
+          "Expo Go không hỗ trợ FCM. Hãy dùng development build/APK, "
+            + "google-services.json và cấp quyền thông báo.",
         );
         return;
       }

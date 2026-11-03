@@ -97,6 +97,29 @@ def test_low_light_creates_one_alert_per_cooldown(
     assert types.count("light_low") == 1
 
 
+def test_alerts_switch_stops_notifications(
+    client: TestClient, auth: dict, device: dict
+) -> None:
+    updated = client.patch(
+        f"/api/devices/{device['id']}",
+        json={"settings": {"alerts_enabled": False}},
+        headers=auth,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["settings"]["alerts_enabled"] is False
+    assert updated.json()["settings"]["collection_enabled"] is True
+
+    response = client.post(
+        "/api/iot/telemetry", json=_telemetry("msg-muted"), headers=_device_headers(device)
+    )
+    assert response.status_code == 202
+    assert response.json()["stored"] is True
+    assert response.json()["alerts"] == []
+
+    notifications = client.get("/api/notifications", headers=auth, params={"unread_only": True})
+    assert notifications.json() == []
+
+
 def test_collection_switch_stops_storing(
     client: TestClient, auth: dict, device: dict
 ) -> None:

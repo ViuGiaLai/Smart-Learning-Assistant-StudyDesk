@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 function inferHost(): string {
   // In Expo Go, `hostUri` is the Metro bundler address, e.g. "192.168.1.20:8081".
@@ -13,14 +14,31 @@ function inferHost(): string {
   return host && host.length > 0 ? host : "localhost";
 }
 
+/**
+ * While developing the web build, the page is served from localhost:8081 but
+ * `EXPO_PUBLIC_API_URL` points at the VPS so that phone builds keep working.
+ * In that case talk to the local backend instead of the (possibly outdated)
+ * deployed one. Set EXPO_PUBLIC_WEB_API_URL to override this.
+ */
+function localWebApiUrl(): string | null {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  const { hostname } = window.location;
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") return null;
+  return `http://${hostname}:8011`;
+}
+
 const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+const webConfigured = process.env.EXPO_PUBLIC_WEB_API_URL?.trim();
 const extraUrl = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl;
 
 /** Base REST URL. Override with EXPO_PUBLIC_API_URL for production builds. */
-export const API_URL = (configured || extraUrl || `http://${inferHost()}:8010`).replace(
-  /\/$/,
-  "",
-);
+export const API_URL = (
+  webConfigured ||
+  localWebApiUrl() ||
+  configured ||
+  extraUrl ||
+  `http://${inferHost()}:8010`
+).replace(/\/$/, "");
 
 export const WS_URL = API_URL.replace(/^http/, "ws");
 

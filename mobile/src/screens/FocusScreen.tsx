@@ -2,7 +2,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Button, Chip, ProgressBar, Text } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
@@ -12,6 +12,7 @@ import { Screen } from "../components/Screen";
 import { Card, SectionTitle, Tag } from "../components/ui";
 import type { TabParamList } from "../navigation/types";
 import { palette, spacing } from "../theme";
+import { confirmAction, showMessage } from "../utils/dialog";
 import { formatClock, formatDuration, formatTime } from "../utils/format";
 
 type Props = BottomTabScreenProps<TabParamList, "Focus">;
@@ -81,7 +82,7 @@ export default function FocusScreen(_props: Props) {
   useEffect(() => {
     if (mode === "break" && breakRemaining === 0) {
       setBreakRemaining(BREAK_SECONDS);
-      Alert.alert("Hết giờ nghỉ", "Quay lại bàn học khi bạn đã sẵn sàng nhé!");
+      showMessage("Hết giờ nghỉ", "Quay lại bàn học khi bạn đã sẵn sàng nhé!");
     }
   }, [mode, breakRemaining]);
 
@@ -99,7 +100,7 @@ export default function FocusScreen(_props: Props) {
         if (auto && !cancelled) {
           setMode("break");
           setBreakRemaining(BREAK_SECONDS);
-          Alert.alert(
+          showMessage(
             "Hoàn thành phiên học!",
             `Bạn đã tập trung ${formatDuration(done.duration_seconds)}. Nghỉ 5 phút trước khi tiếp tục.`,
           );
@@ -107,7 +108,7 @@ export default function FocusScreen(_props: Props) {
           setMode("focus");
         } else {
           setMode("focus");
-          Alert.alert("Đã kết thúc", `Thời gian tập trung: ${formatDuration(done.duration_seconds)}.`);
+          showMessage("Đã kết thúc", `Thời gian tập trung: ${formatDuration(done.duration_seconds)}.`);
         }
       } catch (caught) {
         setError(messageOf(caught));
@@ -354,13 +355,12 @@ export default function FocusScreen(_props: Props) {
               mode="outlined"
               icon="stop"
               onPress={() =>
-                Alert.alert("Kết thúc phiên học?", "Thời gian đã học vẫn được lưu lại.", [
-                  { text: "Hủy", style: "cancel" },
-                  {
-                    text: "Kết thúc",
-                    onPress: () => void finish(false, false),
-                  },
-                ])
+                confirmAction({
+                  title: "Kết thúc phiên học?",
+                  message: "Thời gian đã học vẫn được lưu lại.",
+                  confirmLabel: "Kết thúc",
+                  onConfirm: () => void finish(false, false),
+                })
               }
               disabled={busy}
               style={styles.actionButton}
@@ -372,10 +372,14 @@ export default function FocusScreen(_props: Props) {
             mode="text"
             textColor={palette.danger}
             onPress={() =>
-              Alert.alert("Hủy phiên học?", "Phiên học sẽ được đánh dấu là đã hủy.", [
-                { text: "Không", style: "cancel" },
-                { text: "Hủy phiên", onPress: () => void finish(true, false) },
-              ])
+              confirmAction({
+                title: "Hủy phiên học?",
+                message: "Phiên học sẽ được đánh dấu là đã hủy.",
+                confirmLabel: "Hủy phiên",
+                cancelLabel: "Không",
+                destructive: true,
+                onConfirm: () => void finish(true, false),
+              })
             }
             disabled={busy}
           >

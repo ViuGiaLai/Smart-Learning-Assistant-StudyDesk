@@ -22,6 +22,10 @@ import type {
   User,
 } from "./types";
 
+export interface MessageResponse {
+  detail: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -126,7 +130,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const data = await parseBody(response);
   if (!response.ok) {
-    throw new ApiError(response.status, errorMessage(data, `Lỗi ${response.status}`));
+    let message = errorMessage(data, `Lỗi ${response.status}`);
+    if (response.status === 404 && /^not found$/i.test(message.trim())) {
+      message =
+        "Máy chủ chưa hỗ trợ chức năng này. Có thể backend chưa được cập nhật "
+        + "hoặc ứng dụng đang trỏ tới sai địa chỉ API.";
+    }
+    throw new ApiError(response.status, message);
   }
   return data as T;
 }
@@ -151,6 +161,27 @@ export const api = {
   },
   me(): Promise<User> {
     return request("/api/auth/me");
+  },
+  forgotPassword(email: string): Promise<MessageResponse> {
+    return request("/api/auth/forgot-password", {
+      method: "POST",
+      body: json({ email }),
+      auth: false,
+    });
+  },
+  resetPassword(accessToken: string, newPassword: string): Promise<MessageResponse> {
+    return request("/api/auth/reset-password", {
+      method: "POST",
+      body: json({ access_token: accessToken, new_password: newPassword }),
+      auth: false,
+    });
+  },
+  resendConfirmation(email: string): Promise<MessageResponse> {
+    return request("/api/auth/resend-confirmation", {
+      method: "POST",
+      body: json({ email }),
+      auth: false,
+    });
   },
 
   // Devices ---------------------------------------------------------------

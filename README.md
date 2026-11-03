@@ -449,13 +449,29 @@ user `postgres.<project-ref>`. Mật khẩu có ký tự đặc biệt phải UR
 4. Mọi request API dùng access token Supabase. Backend xác thực chữ ký ES256 qua JWKS,
    kiểm tra `iss`/`aud`, rồi ánh xạ `sub` sang user nội bộ.
 5. Refresh token được GoTrue xoay vòng qua `POST /api/auth/refresh`.
+6. Quên mật khẩu: app gọi `POST /api/auth/forgot-password`; backend gọi GoTrue `/recover`
+   với `redirect_to=smartstudy://reset-password`. Email chứa liên kết mở thẳng app; app gửi
+   access token tạm + mật khẩu mới tới `POST /api/auth/reset-password`, backend gọi
+   `PUT /auth/v1/user`.
+7. Chưa nhận được email xác nhận: app gọi `POST /api/auth/resend-confirmation`.
 
 Lưu ý:
 
 - Supabase từ chối domain dành riêng như `example.com` (`email_address_invalid`); hãy dùng email thật.
 - Muốn bỏ bước xác nhận khi demo: Dashboard → **Authentication → Sign In / Providers → Email**,
   tắt **Confirm email**. Production nên giữ bật và cấu hình SMTP + URL Configuration.
-- Đổi Site URL / Redirect URLs trong Supabase cho khớp địa chỉ web/app của bạn.
+- Nếu thấy `Quá nhiều yêu cầu xác thực`, Supabase đang giới hạn số email gửi trong một khoảng thời gian.
+  Không bấm đăng ký lại liên tục; chờ giới hạn hết, kiểm tra cả Spam/Junk rồi dùng liên kết xác nhận
+  gần nhất. Đây không phải là yêu cầu tạo nhiều tài khoản.
+- Tài khoản local trong `smartstudy.db` và tài khoản Supabase là hai hệ thống khác nhau. Khi
+  `AUTH_PROVIDER=supabase`, tài khoản local không thể đăng nhập qua Supabase; hãy dùng đúng email
+  đã đăng ký trong project Supabase.
+- Đổi Site URL / Redirect URLs trong Supabase cho khớp địa chỉ web/app của bạn. Cần thêm đúng
+  `smartstudy://reset-password` và `smartstudy://email-confirmed` vào **Redirect URLs**, nếu không
+  Supabase sẽ bỏ qua `redirect_to` và app không nhận được token đặt lại mật khẩu.
+- SMTP mặc định của Supabase có giới hạn rất thấp (vài email/giờ) và chỉ gửi chắc chắn tới email
+  thành viên project. Muốn người dùng thật nhận được email xác nhận/đặt lại mật khẩu, cấu hình
+  **Custom SMTP** (Authentication → Emails → SMTP Settings).
 
 ### 16.3 Phân quyền và RLS
 

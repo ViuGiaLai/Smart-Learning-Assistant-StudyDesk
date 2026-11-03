@@ -42,10 +42,12 @@ async def evaluate_environment_alerts(
 
     Returns lightweight alert dicts for the WebSocket payload.
     """
-    if not _settings(device).get("collection_enabled", True):
+    thresholds = _settings(device)
+    if not thresholds.get("collection_enabled", True):
+        return []
+    if not thresholds.get("alerts_enabled", True):
         return []
 
-    thresholds = _settings(device)
     alerts: list[tuple[str, str, str]] = []
 
     temperature = reading.temperature
@@ -233,7 +235,10 @@ async def create_reported_alert(
     content: str,
 ) -> Notification | None:
     """Create a notification reported by the device, respecting cooldown."""
-    if not _settings(device).get("collection_enabled", True):
+    settings_for_device = _settings(device)
+    if not settings_for_device.get("collection_enabled", True):
+        return None
+    if not settings_for_device.get("alerts_enabled", True):
         return None
     if await _already_alerted(
         db, device.id, alert_type, settings.alert_cooldown_seconds

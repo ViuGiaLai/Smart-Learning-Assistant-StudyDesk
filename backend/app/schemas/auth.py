@@ -22,6 +22,24 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    # Access token from the Supabase recovery deep link (one-time use).
+    access_token: str = Field(min_length=20, max_length=4096)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ResendConfirmationRequest(BaseModel):
+    email: EmailStr
+
+
+class MessageOut(BaseModel):
+    detail: str
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Only needed for legacy projects that still sign access tokens with HS256.
     supabase_jwt_secret: str | None = None
     supabase_timeout_seconds: float = 20.0
+    # Deep link that the "reset password" email redirects to. It must be listed
+    # in Supabase -> Authentication -> URL Configuration -> Redirect URLs.
+    password_reset_redirect_url: str = "smartstudy://reset-password"
+    # Same requirement for the "confirm your email" link.
+    email_confirmation_redirect_url: str = "smartstudy://email-confirmed"
 
     # CORS: comma separated list, "*" allows all (dev only)
     cors_origins: str = "*"

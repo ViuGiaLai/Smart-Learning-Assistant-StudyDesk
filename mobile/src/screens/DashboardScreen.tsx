@@ -5,7 +5,16 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Badge, Button, IconButton, ProgressBar, Text } from "react-native-paper";
+import {
+  Badge,
+  Button,
+  Dialog,
+  IconButton,
+  Menu,
+  Portal,
+  ProgressBar,
+  Text,
+} from "react-native-paper";
 
 import { api } from "../api/client";
 import type {
@@ -37,6 +46,7 @@ type Props = CompositeScreenProps<
 
 export default function DashboardScreen({ navigation }: Props) {
   const user = useAuthStore((state) => state.user);
+  const signOut = useAuthStore((state) => state.signOut);
   const devices = useDeviceStore((state) => state.devices);
   const selectedId = useDeviceStore((state) => state.selectedId);
   const refreshDevices = useDeviceStore((state) => state.refresh);
@@ -46,6 +56,8 @@ export default function DashboardScreen({ navigation }: Props) {
   const [context, setContext] = useState<AssistantContext | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
 
   const selectedDevice = devices.find((device) => device.id === selectedId) ?? null;
   const { latest: liveReading, status: liveStatus } = useDeviceStream(selectedId);
@@ -85,27 +97,85 @@ export default function DashboardScreen({ navigation }: Props) {
   const completion = stats?.goal_completion_rate ?? 0;
   const suggestion = context?.suggestions[0];
 
+  const confirmSignOut = () => {
+    setAccountMenuOpen(false);
+    setSignOutOpen(true);
+  };
+
+  const handleSignOut = () => {
+    setSignOutOpen(false);
+    void signOut();
+  };
+
   return (
     <Screen refreshing={refreshing} onRefresh={() => void load()} contentStyle={styles.content}>
       <PageHeader
         title={`${greeting()}, ${user?.name?.split(" ")[0] ?? "bạn"}`}
         subtitle="Sẵn sàng cho một phiên học tập trung?"
         right={
-          <View>
-            <IconButton
-              icon="bell-outline"
-              size={24}
-              onPress={() => navigation.navigate("Notifications")}
-              accessibilityLabel="Thông báo"
-            />
-            {notifications.length > 0 ? (
-              <Badge style={styles.badge} size={18}>
-                {notifications.length > 9 ? "9+" : notifications.length}
-              </Badge>
-            ) : null}
+          <View style={styles.headerActions}>
+            <View>
+              <IconButton
+                icon="bell-outline"
+                size={24}
+                onPress={() => navigation.navigate("Notifications")}
+                accessibilityLabel="Thông báo"
+              />
+              {notifications.length > 0 ? (
+                <Badge style={styles.badge} size={18}>
+                  {notifications.length > 9 ? "9+" : notifications.length}
+                </Badge>
+              ) : null}
+            </View>
+            <Menu
+              visible={accountMenuOpen}
+              onDismiss={() => setAccountMenuOpen(false)}
+              anchor={
+                <IconButton
+                  icon="account-circle-outline"
+                  size={26}
+                  onPress={() => setAccountMenuOpen(true)}
+                  accessibilityLabel="Tài khoản và đăng xuất"
+                  style={styles.accountButton}
+                />
+              }
+            >
+              <Menu.Item
+                title={user?.email ?? ""}
+                disabled
+                titleStyle={styles.menuEmail}
+              />
+              <Menu.Item
+                leadingIcon="logout"
+                title="Đăng xuất"
+                onPress={confirmSignOut}
+              />
+            </Menu>
           </View>
         }
       />
+
+      <Portal>
+        <Dialog
+          visible={signOutOpen}
+          onDismiss={() => setSignOutOpen(false)}
+          style={styles.dialog}
+        >
+          <Dialog.Icon icon="logout" />
+          <Dialog.Title style={styles.dialogTitle}>Đăng xuất?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={styles.muted}>
+              Bạn sẽ cần đăng nhập lại để tiếp tục theo dõi phiên học.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setSignOutOpen(false)}>Huỷ</Button>
+            <Button textColor={palette.danger} onPress={handleSignOut}>
+              Đăng xuất
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
 
       <Card style={styles.hero}>
         <View style={styles.heroRow}>
@@ -305,6 +375,11 @@ export default function DashboardScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   content: { paddingBottom: spacing.xxl },
   badge: { position: "absolute", top: 2, right: 2, backgroundColor: palette.danger },
+  headerActions: { flexDirection: "row", alignItems: "center", marginRight: -spacing.sm },
+  accountButton: { margin: 0, marginLeft: spacing.xs },
+  menuEmail: { color: palette.muted, fontSize: 12 },
+  dialog: { backgroundColor: palette.surface, borderRadius: 20 },
+  dialogTitle: { textAlign: "center" },
   hero: {
     backgroundColor: palette.primary,
     borderColor: palette.primary,

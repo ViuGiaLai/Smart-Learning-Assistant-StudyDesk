@@ -2,7 +2,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   Button,
   Dialog,
@@ -20,6 +20,7 @@ import { Screen } from "../components/Screen";
 import { Card, EmptyState, SectionTitle, Tag } from "../components/ui";
 import type { RootStackParamList } from "../navigation/types";
 import { palette, spacing } from "../theme";
+import { confirmAction } from "../utils/dialog";
 import { formatShortDate } from "../utils/format";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Plans">;
@@ -99,23 +100,22 @@ export default function PlansScreen({ navigation }: Props) {
   };
 
   const remove = (plan: StudyPlan) => {
-    Alert.alert("Xóa kế hoạch?", plan.title, [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Xóa",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              await api.deletePlan(plan.id);
-              await load();
-            } catch (caught) {
-              setError(messageOf(caught));
-            }
-          })();
-        },
+    confirmAction({
+      title: "Xóa kế hoạch?",
+      message: plan.title,
+      confirmLabel: "Xóa",
+      destructive: true,
+      onConfirm: () => {
+        void (async () => {
+          try {
+            await api.deletePlan(plan.id);
+            await load();
+          } catch (caught) {
+            setError(messageOf(caught));
+          }
+        })();
       },
-    ]);
+    });
   };
 
   const start = async (plan: StudyPlan) => {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import jwt
@@ -19,14 +20,20 @@ from app.core.time import utcnow
 from app.db.models import User
 from app.schemas.auth import (
     AuthResponse,
+    ForgotPasswordRequest,
     LoginRequest,
+    MessageOut,
     RefreshRequest,
     RegisterRequest,
+    ResendConfirmationRequest,
+    ResetPasswordRequest,
     TokenPair,
     UserOut,
 )
 from app.services import supabase_auth
 from app.services.supabase_auth import SupabaseAuthError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -76,7 +83,12 @@ async def register(payload: RegisterRequest, db: DbSession) -> AuthResponse:
 
     if settings.supabase_auth_enabled:
         try:
-            data = await supabase_auth.sign_up(email, payload.password, name)
+            data = await supabase_auth.sign_up(
+                email,
+                payload.password,
+                name,
+                redirect_to=settings.email_confirmation_redirect_url,
+            )
         except SupabaseAuthError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
@@ -161,3 +173,76 @@ async def refresh(payload: RefreshRequest, db: DbSession) -> TokenPair:
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+# ---------------------------------------------------------------------------
+# Password recovery / email confirmation
+# ---------------------------------------------------------------------------
+def _require_supabase_for_email() -> None:
+    if not settings.supabase_auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Chức năng gửi email cần Supabase Auth. "
+                "Đặt AUTH_PROVIDER=supabase và cấu hình SUPABASE_URL/KEY."
+            ),
+        )
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def forgot_password(payload: ForgotPasswordRequest) -> MessageOut:
+    _require_supabase_for_email()
+    email = payload.email.lower()
+    try:
+        await supabase_auth.recover(email, settings.password_reset_redirect_url)
+    except SupabaseAuthError as exc:
+        # Rate limits and outages must be visible; unknown emails must not be.
+        if exc.status_code in {429, 502}:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        logger.warning("forgot-password ignored failure for %s: %s", email, exc.detail)
+    return MessageOut(
+        detail=(
+            "Nếu email đã đăng ký, Supabase đã gửi liên kết đặt lại mật khẩu. "
+            "Hãy kiểm tra hộp thư (cả mục Spam)."
+        )
+    )
+
+
+@router.post("/reset-password", response_model=MessageOut)
+async def reset_password(payload: ResetPasswordRequest) -> MessageOut:
+    _require_supabase_for_email()
+    try:
+        await supabase_auth.update_password(
+            payload.access_token, payload.new_password
+        )
+    except SupabaseAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return MessageOut(
+        detail="Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới."
+    )
+
+
+@router.post(
+    "/resend-confirmation",
+    response_model=MessageOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resend_confirmation(payload: ResendConfirmationRequest) -> MessageOut:
+    _require_supabase_for_email()
+    email = payload.email.lower()
+    try:
+        await supabase_auth.resend_confirmation(email)
+    except SupabaseAuthError as exc:
+        if exc.status_code in {429, 502}:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        logger.warning("resend-confirmation ignored failure for %s: %s", email, exc.detail)
+    return MessageOut(
+        detail=(
+            "Nếu tài khoản chưa xác nhận, Supabase đã gửi lại email xác nhận. "
+            "Hãy kiểm tra hộp thư (cả mục Spam)."
+        )
+    )

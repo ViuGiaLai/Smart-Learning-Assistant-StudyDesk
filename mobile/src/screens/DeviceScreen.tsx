@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import {
   Button,
   Dialog,
@@ -20,6 +20,7 @@ import { Card, KeyValueRow, SectionTitle, StatusPill } from "../components/ui";
 import type { RootStackParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
+import { confirmAction } from "../utils/dialog";
 import { relativeTime } from "../utils/format";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Device">;
@@ -199,28 +200,23 @@ export default function DeviceScreen({ navigation, route }: Props) {
   };
 
   const removeDevice = (device: Device) => {
-    Alert.alert(
-      "Xóa thiết bị?",
-      `Dữ liệu cảm biến của ${device.name} sẽ bị xóa khỏi hệ thống.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                await api.deleteDevice(device.id);
-                await refresh();
-                setMessage("Đã xóa thiết bị.");
-              } catch (error) {
-                setMessage(messageOf(error));
-              }
-            })();
-          },
-        },
-      ],
-    );
+    confirmAction({
+      title: "Xóa thiết bị?",
+      message: `Dữ liệu cảm biến của ${device.name} sẽ bị xóa khỏi hệ thống.`,
+      confirmLabel: "Xóa",
+      destructive: true,
+      onConfirm: () => {
+        void (async () => {
+          try {
+            await api.deleteDevice(device.id);
+            await refresh();
+            setMessage("Đã xóa thiết bị.");
+          } catch (error) {
+            setMessage(messageOf(error));
+          }
+        })();
+      },
+    });
   };
 
   return (

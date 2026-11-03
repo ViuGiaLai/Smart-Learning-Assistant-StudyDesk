@@ -14,6 +14,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
 export default function LoginScreen({ navigation }: Props) {
   const signIn = useAuthStore((state) => state.signIn);
+  const resendConfirmation = useAuthStore((state) => state.resendConfirmation);
   const busy = useAuthStore((state) => state.busy);
   const error = useAuthStore((state) => state.error);
   const notice = useAuthStore((state) => state.notice);
@@ -33,6 +34,20 @@ export default function LoginScreen({ navigation }: Props) {
     }
     try {
       await signIn(email, password);
+    } catch {
+      // Store exposes the error message.
+    }
+  };
+
+  const handleResend = async () => {
+    clearError();
+    setLocalError(null);
+    if (!email.trim()) {
+      setLocalError("Nhập email để gửi lại liên kết xác nhận.");
+      return;
+    }
+    try {
+      await resendConfirmation(email);
     } catch {
       // Store exposes the error message.
     }
@@ -98,9 +113,20 @@ export default function LoginScreen({ navigation }: Props) {
           />
 
           {notice ? (
-            <HelperText type="info" visible style={styles.error}>
-              {notice}
-            </HelperText>
+            <View>
+              <HelperText type="info" visible style={styles.error}>
+                {notice}
+              </HelperText>
+              <Button
+                compact
+                mode="text"
+                onPress={() => void handleResend()}
+                disabled={busy}
+                style={styles.resend}
+              >
+                Gửi lại email xác nhận
+              </Button>
+            </View>
           ) : null}
 
           {localError || error ? (
@@ -118,6 +144,17 @@ export default function LoginScreen({ navigation }: Props) {
             contentStyle={styles.buttonContent}
           >
             Đăng nhập
+          </Button>
+
+          <Button
+            compact
+            mode="text"
+            onPress={() =>
+              navigation.navigate("ForgotPassword", { email: email.trim() })
+            }
+            style={styles.forgot}
+          >
+            Quên mật khẩu?
           </Button>
 
           <View style={styles.switchRow}>
@@ -176,6 +213,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   muted: { color: palette.muted },
+  forgot: { alignSelf: "center", marginTop: 2 },
+  resend: { alignSelf: "flex-start", marginTop: -4 },
   serverHint: {
     flexDirection: "row",
     alignItems: "center",

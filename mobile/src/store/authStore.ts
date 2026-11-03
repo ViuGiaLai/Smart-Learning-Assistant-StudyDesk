@@ -24,6 +24,9 @@ interface AuthState {
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<SignUpResult>;
+  forgotPassword: (email: string) => Promise<string>;
+  resetPassword: (accessToken: string, newPassword: string) => Promise<string>;
+  resendConfirmation: (email: string) => Promise<string>;
   signOut: () => Promise<void>;
   clearError: () => void;
   clearNotice: () => void;
@@ -94,8 +97,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const result = await api.register(email.trim(), name.trim(), password);
       if (!result.tokens) {
+        if (!result.requires_email_confirmation) {
+          throw new Error("Máy chủ không trả về phiên đăng nhập hợp lệ.");
+        }
         const notice =
-          "Đã tạo tài khoản. Hãy mở email, bấm liên kết xác nhận rồi đăng nhập lại.";
+          "Đã tạo tài khoản. Không đăng ký lại lần nữa; hãy mở email xác nhận, "
+          + "bấm liên kết rồi đăng nhập lại.";
         set({
           busy: false,
           status: "signedOut",
@@ -119,13 +126,53 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
+  async forgotPassword(email) {
+    set({ busy: true, error: null });
+    try {
+      const result = await api.forgotPassword(email.trim());
+      set({ busy: false });
+      return result.detail;
+    } catch (error) {
+      set({ busy: false, error: messageOf(error) });
+      throw error;
+    }
+  },
+
+  async resetPassword(accessToken, newPassword) {
+    set({ busy: true, error: null });
+    try {
+      const result = await api.resetPassword(accessToken, newPassword);
+      set({ busy: false });
+      return result.detail;
+    } catch (error) {
+      set({ busy: false, error: messageOf(error) });
+      throw error;
+    }
+  },
+
+  async resendConfirmation(email) {
+    set({ busy: true, error: null, notice: null });
+    try {
+      const result = await api.resendConfirmation(email.trim());
+      set({ busy: false, notice: result.detail });
+      return result.detail;
+    } catch (error) {
+      set({ busy: false, error: messageOf(error) });
+      throw error;
+    }
+  },
+
   async signOut() {
-    await unregisterPushToken();
+    try {
+      // Push cleanup is best effort; it must never block signing out.
+      await unregisterPushToken();
+    } catch {
+      // Ignore storage/network failures while removing the FCM token.
+    }
     session.clear();
     await clearTokens();
     set({ status: "signedOut", user: null, error: null, notice: null });
   },
-
   clearError() {
     set({ error: null });
   },

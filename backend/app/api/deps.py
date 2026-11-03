@@ -22,14 +22,18 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def resolve_user_from_token(db: AsyncSession, token: str) -> User | None:
-    """Resolve an access token issued locally or by Supabase Auth."""
+    """Resolve an access token issued by the configured auth provider.
 
-    try:
-        payload = decode_token(token, "access")
-    except jwt.PyJWTError:
-        payload = None
+    Local JWTs are only accepted when ``AUTH_PROVIDER=local``. Accepting them
+    alongside Supabase tokens would let anyone who knows the default local
+    secret forge an admin session on a public deployment.
+    """
 
-    if payload is not None:
+    if settings.auth_provider == "local":
+        try:
+            payload = decode_token(token, "access")
+        except jwt.PyJWTError:
+            return None
         return await db.get(User, payload["sub"])
 
     if not settings.supabase_auth_enabled:

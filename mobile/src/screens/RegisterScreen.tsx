@@ -41,6 +41,8 @@ export default function RegisterScreen({ navigation }: Props) {
     try {
       const result = await signUp(name, email, password);
       if (result.requiresEmailConfirmation) {
+        // The store exposes a notice on the Login screen (also works on web,
+        // where react-native-web does not implement Alert.alert).
         navigation.navigate("Login");
       }
     } catch {

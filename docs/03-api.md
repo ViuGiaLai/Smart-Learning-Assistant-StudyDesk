@@ -9,7 +9,8 @@ Tài liệu tương tác: `/docs` (Swagger UI), `/redoc`.
 - Request/response dùng JSON UTF-8.
 - Thời gian trả về là ISO-8601 UTC, ví dụ `2026-11-01T03:20:00Z`.
 - Các endpoint (trừ `/health`, `/api/auth/register`, `/api/auth/login`,
-  `/api/auth/refresh`, `/api/iot/telemetry`, `/api/iot/alerts`) yêu cầu header:
+  `/api/auth/refresh`, `/api/auth/forgot-password`, `/api/auth/reset-password`,
+  `/api/auth/resend-confirmation`, `/api/iot/telemetry`, `/api/iot/alerts`) yêu cầu header:
 
   ```http
   Authorization: Bearer <access_token>
@@ -122,6 +123,53 @@ Trả về `TokenPair` mới. Refresh token hết hạn/không hợp lệ → `4
 ### `GET /api/auth/me`
 
 Trả về `UserOut` của người dùng hiện tại.
+
+### `POST /api/auth/forgot-password`
+
+Gửi email đặt lại mật khẩu qua Supabase (chỉ khi `AUTH_PROVIDER=supabase`).
+
+```json
+{ "email": "sinhvien@example.com" }
+```
+
+Phản hồi `202` — luôn cùng một thông điệp dù email tồn tại hay không (chống dò tài khoản):
+
+```json
+{ "detail": "Nếu email đã đăng ký, Supabase đã gửi liên kết đặt lại mật khẩu..." }
+```
+
+Email chứa deep link `PASSWORD_RESET_REDIRECT_URL` (mặc định
+`smartstudy://reset-password`). Quá nhiều yêu cầu → `429`; Supabase lỗi mạng → `502`;
+`AUTH_PROVIDER=local` → `503`.
+
+### `POST /api/auth/reset-password`
+
+Đặt mật khẩu mới bằng access token lấy từ deep link (token dùng một lần).
+
+```json
+{ "access_token": "eyJ...", "new_password": "matkhaumoi123" }
+```
+
+`200` khi thành công. Link hết hạn/không hợp lệ → `401`; mật khẩu trùng mật khẩu cũ → `422`.
+
+### `POST /api/auth/resend-confirmation`
+
+Gửi lại email xác nhận khi tài khoản chưa xác nhận. Phản hồi `202`, cùng thông điệp cho
+mọi email.
+
+```json
+{ "email": "sinhvien@example.com" }
+```
+
+### Cấu hình Supabase cho deep link
+
+Vào **Supabase → Authentication → URL Configuration**:
+
+- **Site URL**: một trang thật (ví dụ `https://admin.example.com`) — không để `localhost`.
+- **Redirect URLs**: thêm `smartstudy://reset-password` và `smartstudy://email-confirmed`.
+
+Thiếu hai URL này, Supabase sẽ bỏ qua `redirect_to` và email trỏ về Site URL, nên app
+không nhận được token đặt lại mật khẩu.
 
 ### Quản trị (chỉ `role=admin`)
 

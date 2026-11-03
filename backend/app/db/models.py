@@ -42,6 +42,8 @@ DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "collection_enabled": True,
     # Let the backend automatically drive LED/buzzer when a threshold is crossed.
     "auto_control": True,
+    # Create in-app notifications / push when a threshold is crossed.
+    "alerts_enabled": True,
     # Sampling interval requested from the firmware (seconds, >= 2 for DHT22).
     "sample_interval_seconds": 10,
 }

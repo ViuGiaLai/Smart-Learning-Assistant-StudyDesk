@@ -14,11 +14,14 @@ import DashboardScreen from "../screens/DashboardScreen";
 import DeviceScreen from "../screens/DeviceScreen";
 import EnvironmentScreen from "../screens/EnvironmentScreen";
 import FocusScreen from "../screens/FocusScreen";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import LoginScreen from "../screens/LoginScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import PlansScreen from "../screens/PlansScreen";
 import RegisterScreen from "../screens/RegisterScreen";
+import ResetPasswordScreen from "../screens/ResetPasswordScreen";
 import StatsScreen from "../screens/StatsScreen";
+import { flushPendingAuthUrl, subscribeAuthLinks } from "./authDeepLink";
 import type { RootStackParamList, TabParamList } from "./types";
 import { navigationRef, openNotifications } from "./navigationRef";
 
@@ -93,6 +96,8 @@ export function RootNavigator() {
     return setupNotificationTapHandler(openNotifications);
   }, [status]);
 
+  useEffect(() => subscribeAuthLinks(), []);
+
   if (status === "loading") {
     return (
       <View
@@ -113,7 +118,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme} onReady={flushPendingAuthUrl}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         {status === "signedIn" ? (
           <>
@@ -121,11 +126,15 @@ export function RootNavigator() {
             <Stack.Screen name="Plans" component={PlansScreen} />
             <Stack.Screen name="Device" component={DeviceScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>
         )}
       </Stack.Navigator>

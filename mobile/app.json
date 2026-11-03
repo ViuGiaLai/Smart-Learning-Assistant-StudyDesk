@@ -26,7 +26,7 @@
     "plugins": [
       "expo-secure-store",
       "expo-dev-client",
-      ["expo-notifications", { "color": "#0F766E", "defaultChannel": "study-alerts" }]
+      ["expo-notifications", { "color": "#0F766E", "defaultChannel": "study-alerts-v2" }]
     ],
     "extra": {
       "apiUrl": ""

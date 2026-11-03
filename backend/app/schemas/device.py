@@ -22,6 +22,7 @@ class DeviceSettings(BaseModel):
     no_motion_minutes: int = Field(DEFAULT_DEVICE_SETTINGS["no_motion_minutes"], ge=1, le=180)
     collection_enabled: bool = DEFAULT_DEVICE_SETTINGS["collection_enabled"]
     auto_control: bool = DEFAULT_DEVICE_SETTINGS["auto_control"]
+    alerts_enabled: bool = DEFAULT_DEVICE_SETTINGS["alerts_enabled"]
     sample_interval_seconds: int = Field(
         DEFAULT_DEVICE_SETTINGS["sample_interval_seconds"], ge=2, le=300
     )
