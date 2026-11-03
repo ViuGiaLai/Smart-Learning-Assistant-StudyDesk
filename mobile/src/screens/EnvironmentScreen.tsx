@@ -3,7 +3,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Chip, Text } from "react-native-paper";
 
@@ -39,36 +39,46 @@ export default function EnvironmentScreen({ navigation }: Props) {
 
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [loading, setLoading] = useState(false);
+  const lastLoadedAt = useRef<number>(0);
 
   const selected = devices.find((device) => device.id === selectedId) ?? null;
   const { latest: live, alerts, connected, status } = useDeviceStream(selectedId);
 
-  const loadReadings = useCallback(async () => {
+  const loadReadings = useCallback(async (force = false) => {
     const deviceId = useDeviceStore.getState().selectedId;
     if (!deviceId) return;
-    setLoading(true);
+    const now = Date.now();
+    if (!force && now - lastLoadedAt.current < 15_000) return;
+    // Only show inline loading note on first load if we don't have readings yet
+    if (readings.length === 0) {
+      setLoading(true);
+    }
     try {
       const page = await api.readings(deviceId, 60);
       setReadings(page.items);
+      lastLoadedAt.current = Date.now();
     } catch {
       // Keep last data.
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [readings.length]);
 
   useFocusEffect(
     useCallback(() => {
+      const now = Date.now();
+      if (now - lastLoadedAt.current < 15_000) return;
       void (async () => {
         await refreshDevices();
-        await loadReadings();
+        await loadReadings(true);
       })();
     }, [loadReadings, refreshDevices]),
   );
 
   useEffect(() => {
     setReadings([]);
-    if (selectedId) void loadReadings();
+    lastLoadedAt.current = 0;
+    if (selectedId) void loadReadings(true);
   }, [selectedId, loadReadings]);
 
   // REST fallback when the WebSocket is unavailable.

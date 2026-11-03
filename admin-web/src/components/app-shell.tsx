@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -134,9 +135,16 @@ function NavLinks({
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-5 py-5">
-      <span className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-200">
-        <BookIcon className="size-4.5" />
-      </span>
+      <div className="relative size-10 shrink-0 overflow-hidden rounded-xl border border-slate-100 bg-white p-0.5 shadow-sm">
+        <Image
+          src="/logo.png"
+          alt="SmartStudy Logo"
+          width={40}
+          height={40}
+          className="size-full object-contain"
+          priority
+        />
+      </div>
       <div>
         <p className="text-sm font-bold tracking-tight text-slate-900">
           SmartStudy

@@ -5,6 +5,7 @@ import { getStored, removeStored, setStored } from "../api/storage";
 import { session } from "../api/session";
 import type { TokenPair, User } from "../api/types";
 import { unregisterPushToken } from "../notifications/push";
+import { useNotificationStore } from "./notificationStore";
 
 const ACCESS_KEY = "sla.access_token";
 const REFRESH_KEY = "sla.refresh_token";
@@ -171,6 +172,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     session.clear();
     await clearTokens();
+    // Clear all cached store data so the next user starts fresh.
+    useNotificationStore.getState().reset();
     set({ status: "signedOut", user: null, error: null, notice: null });
   },
   clearError() {

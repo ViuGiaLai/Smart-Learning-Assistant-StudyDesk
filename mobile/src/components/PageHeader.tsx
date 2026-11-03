@@ -1,6 +1,5 @@
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { IconButton, Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -27,8 +26,12 @@ export function PageHeader({ title, subtitle, onBack, right }: PageHeaderProps) 
             accessibilityLabel="Quay lại"
           />
         ) : (
-          <View style={styles.logo}>
-            <MaterialCommunityIcons name="book-open-page-variant" size={20} color="#fff" />
+          <View style={styles.logoContainer}>
+            <Image
+              source={require("../../assets/logo.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
         )}
         <View style={styles.textWrap}>
@@ -63,7 +66,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: spacing.md,
   },
-  back: { marginLeft: -spacing.sm, marginRight: spacing.xs },
+  logoContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginRight: spacing.md,
+  },
+  logoImage: {
+    width: 40,
+    height: 40,
+  },  back: { marginLeft: -spacing.sm, marginRight: spacing.xs },
   textWrap: { flex: 1 },
   title: { color: palette.text, fontWeight: "700" },
   subtitle: { color: palette.muted, marginTop: 2 },

@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
 
@@ -41,8 +41,13 @@ export default function StatsScreen(_props: Props) {
   const [goalInput, setGoalInput] = useState("120");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cache: avoid re-fetching if data is fresh (30s TTL)
+  const lastLoadedAt = useRef<number>(0);
+  const CACHE_TTL = 30_000;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLoadedAt.current < CACHE_TTL) return;
     setError(null);
     try {
       const [statsResult, sessionsResult] = await Promise.all([
@@ -52,6 +57,7 @@ export default function StatsScreen(_props: Props) {
       setStats(statsResult);
       setSessions(sessionsResult);
       setGoalInput(String(statsResult.daily_goal_minutes));
+      lastLoadedAt.current = Date.now();
     } catch (caught) {
       setError(messageOf(caught));
     }
@@ -73,7 +79,7 @@ export default function StatsScreen(_props: Props) {
     setError(null);
     try {
       await api.setGoal(Math.round(value));
-      await load();
+      await load(true);
     } catch (caught) {
       setError(messageOf(caught));
     } finally {

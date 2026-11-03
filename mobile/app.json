@@ -7,19 +7,23 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "smartstudy",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#0F766E",
+      "image": "./assets/splash.png",
+      "backgroundColor": "#FFFFFF",
       "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.smartstudy.assistant"
+      "bundleIdentifier": "com.smartstudy.assistant",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.smartstudy.assistant",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#0F766E"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true
     },

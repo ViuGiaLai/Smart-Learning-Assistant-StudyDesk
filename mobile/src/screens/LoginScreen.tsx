@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { Button, HelperText, Text, TextInput } from "react-native-paper";
 
 import { API_URL } from "../api/config";
@@ -61,10 +61,14 @@ export default function LoginScreen({ navigation }: Props) {
       <Screen>
         <View style={styles.brand}>
           <View style={styles.logo}>
-            <MaterialCommunityIcons name="book-open-page-variant" size={34} color="#fff" />
+            <Image
+              source={require("../../assets/logo.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text variant="headlineSmall" style={styles.title}>
-            Smart Learning Assistant
+            SmartStudy
           </Text>
           <Text variant="bodyMedium" style={styles.subtitle}>
             Trợ lý học tập thông minh kết hợp bàn học IoT
@@ -182,13 +186,25 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   brand: { alignItems: "center", marginTop: spacing.xxl, marginBottom: spacing.xl },
   logo: {
-    width: 76,
-    height: 76,
+    width: 88,
+    height: 88,
     borderRadius: 24,
-    backgroundColor: palette.primary,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    overflow: "hidden",
+  },
+  logoImage: {
+    width: 76,
+    height: 76,
   },
   title: { color: palette.text, fontWeight: "700", textAlign: "center" },
   subtitle: { color: palette.muted, textAlign: "center", marginTop: spacing.xs },

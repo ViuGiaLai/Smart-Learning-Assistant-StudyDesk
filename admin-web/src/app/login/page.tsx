@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -75,9 +76,16 @@ export default function LoginPage() {
 
         <div className="relative flex flex-1 flex-col p-12">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-white/10 text-white ring-1 ring-white/20 backdrop-blur">
-              <BookIcon className="size-5" />
-            </span>
+            <div className="relative size-12 shrink-0 overflow-hidden rounded-2xl border border-white/20 bg-white p-1 shadow-lg shadow-black/20">
+              <Image
+                src="/logo.png"
+                alt="SmartStudy Logo"
+                width={48}
+                height={48}
+                className="size-full object-contain"
+                priority
+              />
+            </div>
             <div>
               <p className="text-sm font-bold text-white">SmartStudy</p>
               <p className="text-[10px] tracking-[0.2em] text-indigo-200/70 uppercase">
@@ -129,9 +137,16 @@ export default function LoginPage() {
       <div className="flex w-full items-center justify-center px-4 py-10 lg:w-1/2">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <span className="mb-4 flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200">
-              <BookIcon className="size-5" />
-            </span>
+            <div className="mb-4 relative size-14 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-md">
+              <Image
+                src="/logo.png"
+                alt="SmartStudy Logo"
+                width={56}
+                height={56}
+                className="size-full object-contain"
+                priority
+              />
+            </div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
               SmartStudy Admin
             </h1>

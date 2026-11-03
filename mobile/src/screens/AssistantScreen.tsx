@@ -50,13 +50,17 @@ export default function AssistantScreen(_props: Props) {
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const lastContextFetch = useRef<number>(0);
 
   useFocusEffect(
     useCallback(() => {
+      const now = Date.now();
+      if (now - lastContextFetch.current < 60_000) return;
       void (async () => {
         try {
           const context = await api.assistantContext();
           setSuggestions(context.suggestions.slice(0, 4));
+          lastContextFetch.current = Date.now();
         } catch {
           // Chat still works without context.
         }

@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
   Button,
@@ -47,12 +47,18 @@ export default function PlansScreen({ navigation }: Props) {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Cache: 15s TTL — plans can change quickly
+  const lastLoadedAt = useRef<number>(0);
+  const CACHE_TTL = 15_000;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLoadedAt.current < CACHE_TTL) return;
     try {
       const result = await api.listPlans();
       setPlans(result);
       setError(null);
+      lastLoadedAt.current = Date.now();
     } catch (caught) {
       setError(messageOf(caught));
     }
@@ -82,7 +88,7 @@ export default function PlansScreen({ navigation }: Props) {
       setTitle("");
       setMinutes("25");
       setDialogOpen(false);
-      await load();
+      await load(true);
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -93,7 +99,7 @@ export default function PlansScreen({ navigation }: Props) {
   const complete = async (plan: StudyPlan) => {
     try {
       await api.updatePlan(plan.id, { status: "completed" });
-      await load();
+      await load(true);
     } catch (caught) {
       setError(messageOf(caught));
     }
@@ -109,7 +115,7 @@ export default function PlansScreen({ navigation }: Props) {
         void (async () => {
           try {
             await api.deletePlan(plan.id);
-            await load();
+            await load(true);
           } catch (caught) {
             setError(messageOf(caught));
           }

@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { Button, HelperText, Text, TextInput } from "react-native-paper";
 
 import { Screen } from "../components/Screen";
@@ -58,10 +58,14 @@ export default function RegisterScreen({ navigation }: Props) {
       <Screen>
         <View style={styles.brand}>
           <View style={styles.logo}>
-            <MaterialCommunityIcons name="account-plus-outline" size={32} color="#fff" />
+            <Image
+              source={require("../../assets/logo.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text variant="headlineSmall" style={styles.title}>
-            Tạo tài khoản
+            SmartStudy
           </Text>
           <Text variant="bodyMedium" style={styles.subtitle}>
             Bắt đầu theo dõi thời gian học và môi trường bàn học.
@@ -152,13 +156,25 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   brand: { alignItems: "center", marginTop: spacing.xl, marginBottom: spacing.lg },
   logo: {
-    width: 70,
-    height: 70,
+    width: 80,
+    height: 80,
     borderRadius: 22,
-    backgroundColor: palette.primary,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    overflow: "hidden",
+  },
+  logoImage: {
+    width: 70,
+    height: 70,
   },
   title: { color: palette.text, fontWeight: "700" },
   subtitle: {
