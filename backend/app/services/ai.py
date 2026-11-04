@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -18,17 +19,40 @@ from app.services.stats import get_study_stats
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_INSTRUCTION = """Bạn là trợ lý học tập của ứng dụng Smart Learning Assistant.
-Nhiệm vụ: giúp sinh viên lập kế hoạch, duy trì tập trung và cải thiện môi trường học tập.
+SYSTEM_INSTRUCTION = """Bạn là trợ lý học tập trong ứng dụng Smart Learning Assistant,
+luôn trả lời bằng tiếng Việt.
 
-Quy tắc bắt buộc:
-- Trả lời bằng tiếng Việt, ngắn gọn, thực tế, tối đa khoảng 250 từ.
-- Chỉ dùng dữ liệu cảm biến được cung cấp; không bịa số liệu.
-- Cảm biến môi trường không phải thiết bị y tế. Không chẩn đoán bệnh, không đưa lời khuyên
-  y tế. Nếu người dùng mô tả triệu chứng, khuyên họ gặp chuyên gia y tế.
-- Gợi ý thay đổi môi trường dựa trên ngưỡng người dùng đã cấu hình.
-- Khuyến khích nghỉ ngơi hợp lý, không khuyến khích học quá sức.
-- Nếu thiếu dữ liệu, nói rõ là chưa có dữ liệu thay vì suy đoán."""
+Mục tiêu: giúp người học hiểu đúng câu hỏi và biết việc cần làm tiếp theo.
+
+Quy tắc trả lời:
+- Trả lời TRỰC TIẾP vào đúng câu hỏi ngay câu đầu tiên; không chào hỏi dài dòng,
+  không nhắc lại câu hỏi.
+- Ngắn gọn: tối đa 120 từ (3-5 câu) hoặc tối đa 4 gạch đầu dòng. Không giải thích lan man,
+  không liệt kê số liệu không được hỏi.
+- Chỉ nêu số liệu có trong "Dữ liệu người học" và chỉ khi liên quan đến câu hỏi; không bịa
+  số liệu, không tự tính toán ngoài dữ liệu.
+- Nếu câu hỏi mơ hồ: đưa câu trả lời hữu ích ngắn nhất, rồi hỏi lại đúng một câu để làm rõ.
+- Nếu câu hỏi ngoài phạm vi học tập: trả lời ngắn trong hiểu biết chung, rồi hướng về việc học
+  nếu phù hợp.
+- Cảm biến không phải thiết bị y tế: không chẩn đoán, không tư vấn y tế; nếu có triệu chứng,
+  khuyên gặp chuyên gia y tế.
+- Không khuyến khích học quá sức; nhắc nghỉ ngắn khi phiên học kéo dài.
+- Không dùng markdown ngoài **in đậm**: chỉ dùng **...** để làm nổi bật 1-2 giá trị quan trọng
+  nhất; không dùng ##, bảng hay backtick. Chỉ dùng gạch đầu dòng khi liệt kê bước làm.
+- Nếu chỉ là lời chào hoặc cảm ơn: đáp lại một câu ngắn và gợi ý một việc nên làm tiếp theo."""
+
+# How many previous turns to send back to the model so follow-up questions
+# ("gợi ý thêm", "vậy còn cách nào khác?") stay on topic.
+HISTORY_TURNS = 4
+HISTORY_QUESTION_CHARS = 800
+HISTORY_ANSWER_CHARS = 600
+
+
+def _context_block(context: dict[str, Any]) -> str:
+    return (
+        "Dữ liệu người học (chỉ tham khảo, bỏ qua nếu không liên quan đến câu hỏi):\n"
+        + json.dumps(context, ensure_ascii=False, default=str)
+    )
 
 
 async def build_context(db: AsyncSession, user: User) -> dict[str, Any]:
@@ -201,31 +225,71 @@ def _fallback_answer(context: dict[str, Any], suggestions: list[str]) -> str:
     else:
         parts.append("Hiện chưa có dữ liệu cảm biến mới từ bàn học.")
     if suggestions:
-        parts.append("Gợi ý: " + " ".join(suggestions[:3]))
+        parts.append("Gợi ý: " + " ".join(suggestions[:2]))
     parts.append(
-        "(Trả lời tự động vì chưa cấu hình GROQ_API_KEY hoặc GEMINI_API_KEY. "
-        "Dữ liệu cảm biến chỉ mang tính tham khảo, không phải tư vấn y tế.)"
+        "(Trả lời tự động vì chưa cấu hình khóa AI. Dữ liệu cảm biến chỉ mang tính tham khảo, "
+        "không phải tư vấn y tế.)"
     )
     return "\n\n".join(parts)
 
 
-async def _call_groq(context: dict[str, Any], message: str) -> str | None:
+async def _load_history(
+    db: AsyncSession, user: User, conversation_id: str | None
+) -> list[dict[str, str]]:
+    """Return the last few Q/A turns of this conversation, oldest first."""
+    if not conversation_id:
+        return []
+    rows = (
+        (
+            await db.execute(
+                select(AIConversation)
+                .where(
+                    AIConversation.user_id == user.id,
+                    AIConversation.conversation_id == conversation_id,
+                )
+                .order_by(AIConversation.created_at.desc())
+                .limit(HISTORY_TURNS)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    history: list[dict[str, str]] = []
+    for row in reversed(rows):
+        history.append({"role": "user", "content": row.question[:HISTORY_QUESTION_CHARS]})
+        history.append({"role": "assistant", "content": row.response[:HISTORY_ANSWER_CHARS]})
+    return history
+
+
+def _clean_answer(text: str) -> str:
+    """Tidy assistant output while keeping the **bold** markers the app renders."""
+    cleaned = text.replace("__", "").replace("`", "")
+    cleaned = re.sub(r"^\s*#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines())
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+async def _call_groq(
+    context: dict[str, Any], message: str, history: list[dict[str, str]] | None = None
+) -> str | None:
     if not settings.groq_api_key:
         return None
-    prompt = (
-        "Dữ liệu người học (JSON):\n"
-        f"{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
-        f"Câu hỏi của người học: {message}"
-    )
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": f"{SYSTEM_INSTRUCTION}\n\n{_context_block(context)}"}
+    ]
+    messages.extend(history or [])
+    messages.append({"role": "user", "content": message})
     payload = {
         "model": settings.groq_model,
-        "temperature": 0.4,
-        "max_tokens": 900,
-        "messages": [
-            {"role": "system", "content": SYSTEM_INSTRUCTION},
-            {"role": "user", "content": prompt},
-        ],
+        "temperature": 0.3,
+        "max_tokens": 800,
+        "messages": messages,
     }
+    if settings.groq_model.startswith("openai/gpt-oss"):
+        # Reasoning models spend tokens on hidden reasoning; "low" keeps
+        # latency and verbosity down for short chat answers.
+        payload["reasoning_effort"] = "low"
     try:
         async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
             response = await client.post(
@@ -246,19 +310,26 @@ async def _call_groq(context: dict[str, Any], message: str) -> str | None:
         return None
 
 
-async def _call_gemini(context: dict[str, Any], message: str) -> str | None:
+async def _call_gemini(
+    context: dict[str, Any], message: str, history: list[dict[str, str]] | None = None
+) -> str | None:
     if not settings.gemini_api_key:
         return None
-    prompt = (
-        "Dữ liệu người học (JSON):\n"
-        f"{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
-        f"Câu hỏi của người học: {message}"
-    )
+    contents = [
+        {
+            "role": "user" if turn["role"] == "user" else "model",
+            "parts": [{"text": turn["content"]}],
+        }
+        for turn in (history or [])
+    ]
+    contents.append({"role": "user", "parts": [{"text": message}]})
     url = f"{settings.gemini_base_url}/models/{settings.gemini_model}:generateContent"
     payload = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 900},
+        "systemInstruction": {
+            "parts": [{"text": f"{SYSTEM_INSTRUCTION}\n\n{_context_block(context)}"}]
+        },
+        "contents": contents,
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 420},
     }
     try:
         async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
@@ -289,6 +360,7 @@ async def chat(
 ) -> ChatResponse:
     context = await build_context(db, user)
     suggestions = rule_based_suggestions(context)
+    history = await _load_history(db, user, conversation_id)
 
     answer: str | None = None
     source = "rule_based"
@@ -301,17 +373,19 @@ async def chat(
 
     for provider in providers:
         if provider == "groq":
-            answer = await _call_groq(context, message)
+            answer = await _call_groq(context, message, history)
             if answer:
                 source, model = "groq", settings.groq_model
         else:
-            answer = await _call_gemini(context, message)
+            answer = await _call_gemini(context, message, history)
             if answer:
                 source, model = "gemini", settings.gemini_model
         if answer:
             break
 
-    if not answer:
+    if answer:
+        answer = _clean_answer(answer)
+    else:
         answer = _fallback_answer(context, suggestions)
 
     conversation_id = conversation_id or str(uuid.uuid4())

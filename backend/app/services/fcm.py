@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 _TOKEN_REFRESH_MARGIN_SECONDS = 60
+# Must match `ANDROID_CHANNEL_ID` in mobile/src/notifications/push.ts so the
+# notification uses the high-importance channel the app creates.
+ANDROID_CHANNEL_ID = "study-alerts-v2"
 
 
 @dataclass(slots=True)
@@ -159,7 +162,7 @@ async def _send_one(
             "android": {
                 "priority": "high",
                 "notification": {
-                    "channel_id": "study-alerts",
+                    "channel_id": ANDROID_CHANNEL_ID,
                     "sound": "default",
                 },
             },

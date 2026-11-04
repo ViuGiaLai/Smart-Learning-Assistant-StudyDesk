@@ -55,12 +55,55 @@ def test_chat_uses_rule_based_fallback_without_gemini_key(
     assert follow_up.json()["conversation_id"] == body["conversation_id"]
 
 
+def test_chat_passes_conversation_history_to_model(
+    client: TestClient, auth: dict, monkeypatch
+) -> None:
+    from app.services import ai
+
+    captured: list[list[dict[str, str]]] = []
+
+    async def fake_groq(
+        context: dict, message: str, history: list[dict[str, str]] | None = None
+    ) -> str:
+        captured.append(list(history or []))
+        return "Trả lời ngắn gọn"
+
+    monkeypatch.setattr(ai.settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(ai, "_call_groq", fake_groq)
+
+    first = client.post(
+        "/api/assistant/chat", json={"message": "Câu hỏi đầu tiên"}, headers=auth
+    )
+    assert first.status_code == 200, first.text
+    conversation_id = first.json()["conversation_id"]
+    assert captured[0] == []
+
+    follow_up = client.post(
+        "/api/assistant/chat",
+        json={"message": "Hỏi tiếp", "conversation_id": conversation_id},
+        headers=auth,
+    )
+    assert follow_up.status_code == 200, follow_up.text
+    assert captured[1][0] == {"role": "user", "content": "Câu hỏi đầu tiên"}
+    assert captured[1][1]["role"] == "assistant"
+
+
+def test_clean_answer_keeps_bold_markup() -> None:
+    from app.services.ai import _clean_answer
+
+    assert _clean_answer("**Đậm** và `code`\n## Tiêu đề\n\n\nHết  ") == (
+        "**Đậm** và code\nTiêu đề\n\nHết"
+    )
+
+
 def test_chat_prefers_groq_when_configured(
     client: TestClient, auth: dict, monkeypatch
 ) -> None:
     from app.services import ai
 
-    async def fake_groq(context: dict, message: str) -> str:
+    async def fake_groq(
+        context: dict, message: str, history: list[dict[str, str]] | None = None
+    ) -> str:
         return "Trả lời từ Groq"
 
     monkeypatch.setattr(ai.settings, "groq_api_key", "test-key")
