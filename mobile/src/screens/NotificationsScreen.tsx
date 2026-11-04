@@ -88,27 +88,29 @@ export default function NotificationsScreen({ navigation }: Props) {
     <Screen
       refreshing={refreshing}
       onRefresh={() => void load({ force: true })}
+      header={
+        <PageHeader
+          title="Thông báo"
+          subtitle={
+            unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Bạn đã xem hết thông báo"
+          }
+          onBack={() => navigation.goBack()}
+          right={
+            unreadCount > 0 ? (
+              <Button
+                compact
+                mode="contained-tonal"
+                icon="check-all"
+                onPress={() => void markAllRead()}
+                style={styles.markAllButton}
+              >
+                Đọc hết
+              </Button>
+            ) : undefined
+          }
+        />
+      }
     >
-      <PageHeader
-        title="Thông báo"
-        subtitle={
-          unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : "Bạn đã xem hết thông báo"
-        }
-        onBack={() => navigation.goBack()}
-        right={
-          unreadCount > 0 ? (
-            <Button
-              compact
-              mode="contained-tonal"
-              icon="check-all"
-              onPress={() => void markAllRead()}
-              style={styles.markAllButton}
-            >
-              Đọc hết
-            </Button>
-          ) : undefined
-        }
-      />
 
       {error ? (
         <Card style={styles.errorCard}>

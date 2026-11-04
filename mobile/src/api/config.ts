@@ -15,10 +15,9 @@ function inferHost(): string {
 }
 
 /**
- * While developing the web build, the page is served from localhost:8081 but
- * `EXPO_PUBLIC_API_URL` points at the VPS so that phone builds keep working.
- * In that case talk to the local backend instead of the (possibly outdated)
- * deployed one. Set EXPO_PUBLIC_WEB_API_URL to override this.
+ * Dev web fallback: when no API URL is configured, a page served from
+ * localhost talks to the local backend on port 8011. An explicit
+ * `EXPO_PUBLIC_API_URL` (e.g. the VPS) always wins.
  */
 function localWebApiUrl(): string | null {
   if (Platform.OS !== "web" || typeof window === "undefined") return null;
@@ -34,8 +33,8 @@ const extraUrl = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined
 /** Base REST URL. Override with EXPO_PUBLIC_API_URL for production builds. */
 export const API_URL = (
   webConfigured ||
-  localWebApiUrl() ||
   configured ||
+  localWebApiUrl() ||
   extraUrl ||
   `http://${inferHost()}:8010`
 ).replace(/\/$/, "");

@@ -220,17 +220,20 @@ export default function DeviceScreen({ navigation, route }: Props) {
   };
 
   return (
-    <Screen>
-      <PageHeader
-        title="Thiết bị IoT"
-        subtitle="Quản lý ESP32 và ngưỡng cảnh báo"
-        onBack={() => navigation.goBack()}
-        right={
-          <Button compact icon="plus" onPress={() => setShowRegister((value) => !value)}>
-            Thêm
-          </Button>
-        }
-      />
+    <Screen
+      header={
+        <PageHeader
+          title="Thiết bị IoT"
+          subtitle="Quản lý ESP32 và ngưỡng cảnh báo"
+          onBack={() => navigation.goBack()}
+          right={
+            <Button compact icon="plus" onPress={() => setShowRegister((value) => !value)}>
+              Thêm
+            </Button>
+          }
+        />
+      }
+    >
 
       {showRegister ? (
         <Card style={styles.registerCard}>

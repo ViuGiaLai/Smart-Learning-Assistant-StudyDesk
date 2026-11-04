@@ -172,6 +172,14 @@ export interface ChatResponse {
 
 export type ChatSource = "groq" | "gemini" | "rule_based";
 
+export interface AssistantHistoryItem {
+  id: string;
+  conversation_id: string;
+  question: string;
+  response: string;
+  created_at: string;
+}
+
 export interface AssistantContext {
   latest_temperature: number | null;
   latest_humidity: number | null;

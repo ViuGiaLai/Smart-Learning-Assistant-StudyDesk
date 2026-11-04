@@ -140,52 +140,54 @@ export default function DashboardScreen({ navigation }: Props) {
       refreshing={refreshing}
       onRefresh={() => void loadData({ isPull: true, force: true })}
       contentStyle={styles.content}
-    >
-      <PageHeader
-        title={`${greeting()}, ${user?.name?.split(" ")[0] ?? "bạn"}`}
-        subtitle="Sẵn sàng cho một phiên học tập trung?"
-        right={
-          <View style={styles.headerActions}>
-            <View>
-              <IconButton
-                icon="bell-outline"
-                size={24}
-                onPress={() => navigation.navigate("Notifications")}
-                accessibilityLabel="Thông báo"
-              />
-              {unreadCount > 0 ? (
-                <Badge style={styles.badge} size={18}>
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </Badge>
-              ) : null}
-            </View>
-            <Menu
-              visible={accountMenuOpen}
-              onDismiss={() => setAccountMenuOpen(false)}
-              anchor={
+      header={
+        <PageHeader
+          title={`${greeting()}, ${user?.name?.split(" ")[0] ?? "bạn"}`}
+          subtitle="Sẵn sàng cho một phiên học tập trung?"
+          right={
+            <View style={styles.headerActions}>
+              <View>
                 <IconButton
-                  icon="account-circle-outline"
-                  size={26}
-                  onPress={() => setAccountMenuOpen(true)}
-                  accessibilityLabel="Tài khoản và đăng xuất"
-                  style={styles.accountButton}
+                  icon="bell-outline"
+                  size={24}
+                  onPress={() => navigation.navigate("Notifications")}
+                  accessibilityLabel="Thông báo"
                 />
-              }
-            >
-              <Menu.Item
-                title={user?.email ?? ""}
-                disabled
-                titleStyle={styles.menuEmail}
-              />
-              <Menu.Item
-                leadingIcon="logout"
-                title="Đăng xuất"
-                onPress={confirmSignOut}
-              />
-            </Menu>
-          </View>
-        }
-      />
+                {unreadCount > 0 ? (
+                  <Badge style={styles.badge} size={18}>
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Badge>
+                ) : null}
+              </View>
+              <Menu
+                visible={accountMenuOpen}
+                onDismiss={() => setAccountMenuOpen(false)}
+                anchor={
+                  <IconButton
+                    icon="account-circle-outline"
+                    size={26}
+                    onPress={() => setAccountMenuOpen(true)}
+                    accessibilityLabel="Tài khoản và đăng xuất"
+                    style={styles.accountButton}
+                  />
+                }
+              >
+                <Menu.Item
+                  title={user?.email ?? ""}
+                  disabled
+                  titleStyle={styles.menuEmail}
+                />
+                <Menu.Item
+                  leadingIcon="logout"
+                  title="Đăng xuất"
+                  onPress={confirmSignOut}
+                />
+              </Menu>
+            </View>
+          }
+        />
+      }
+    >
 
       <Portal>
         <Dialog

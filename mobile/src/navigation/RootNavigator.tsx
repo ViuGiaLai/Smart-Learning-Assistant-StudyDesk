@@ -5,11 +5,13 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Text } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../store/authStore";
 import { palette, spacing } from "../theme";
 import { registerPushToken, setupNotificationTapHandler } from "../notifications/push";
 import AssistantScreen from "../screens/AssistantScreen";
+import AssistantHistoryScreen from "../screens/AssistantHistoryScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import DeviceScreen from "../screens/DeviceScreen";
 import EnvironmentScreen from "../screens/EnvironmentScreen";
@@ -46,18 +48,22 @@ const TAB_LABELS: Record<keyof TabParamList, string> = {
 };
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 8);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: palette.primary,
         tabBarInactiveTintColor: palette.muted,
         tabBarLabel: TAB_LABELS[route.name],
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         tabBarStyle: {
-          height: 64,
+          height: 56 + bottomInset,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: bottomInset,
           backgroundColor: palette.surface,
           borderTopColor: palette.border,
         },
@@ -126,6 +132,7 @@ export function RootNavigator() {
             <Stack.Screen name="Plans" component={PlansScreen} />
             <Stack.Screen name="Device" component={DeviceScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
+            <Stack.Screen name="AssistantHistory" component={AssistantHistoryScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>

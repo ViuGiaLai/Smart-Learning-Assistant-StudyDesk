@@ -1,18 +1,28 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useRef, useState } from "react";
+import type { CompositeScreenProps } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { Chip, IconButton, Text, TextInput } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
-import type { ChatSource } from "../api/types";
+import type { AssistantContext, ChatSource } from "../api/types";
 import { PageHeader } from "../components/PageHeader";
+import { RichMessageText } from "../components/RichMessageText";
+import { SensorStatusRow, type SensorStatusItem } from "../components/SensorStatusRow";
+import { useTabScrollToTop } from "../hooks/useTabScrollToTop";
 import { Tag } from "../components/ui";
-import type { TabParamList } from "../navigation/types";
+import type { RootStackParamList, TabParamList } from "../navigation/types";
+import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
+import { humidityTone, lightTone, temperatureTone } from "../utils/sensorTone";
 
-type Props = BottomTabScreenProps<TabParamList, "Assistant">;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, "Assistant">,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 interface ChatMessage {
   id: string;
@@ -30,6 +40,13 @@ const SOURCE_LABELS: Record<ChatSource, string> = {
 const WELCOME =
   "Chào bạn! Mình là trợ lý học tập. Mình có thể giúp bạn lập kế hoạch, giải thích kiến thức, tạo câu hỏi ôn tập và gợi ý cải thiện môi trường bàn học dựa trên cảm biến.";
 
+const QUICK_PROMPTS = [
+  "Hôm nay tôi nên học gì?",
+  "Ánh sáng bàn học có đủ không?",
+  "Cách tập trung 25 phút?",
+  "Tóm tắt tiến độ tuần này",
+];
+
 function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
@@ -40,7 +57,7 @@ function nextId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export default function AssistantScreen(_props: Props) {
+export default function AssistantScreen({ navigation, route }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: "welcome", role: "assistant", text: WELCOME },
   ]);
@@ -49,8 +66,12 @@ export default function AssistantScreen(_props: Props) {
   const [sending, setSending] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
+  const [context, setContext] = useState<AssistantContext | null>(null);
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  useTabScrollToTop(scrollRef);
   const lastContextFetch = useRef<number>(0);
+  const devices = useDeviceStore((state) => state.devices);
+  const selectedId = useDeviceStore((state) => state.selectedId);
 
   useFocusEffect(
     useCallback(() => {
@@ -60,6 +81,7 @@ export default function AssistantScreen(_props: Props) {
         try {
           const context = await api.assistantContext();
           setSuggestions(context.suggestions.slice(0, 4));
+          setContext(context);
           lastContextFetch.current = Date.now();
         } catch {
           // Chat still works without context.
@@ -67,6 +89,39 @@ export default function AssistantScreen(_props: Props) {
       })();
     }, []),
   );
+
+  // Reopen a saved conversation coming from the history screen.
+  const requestedConversationId = route.params?.conversationId;
+  useEffect(() => {
+    if (!requestedConversationId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const history = await api.assistantHistory(100);
+        if (cancelled) return;
+        const turns = history
+          .filter((item) => item.conversation_id === requestedConversationId)
+          .sort((a, b) => a.created_at.localeCompare(b.created_at));
+        if (turns.length === 0) return;
+        setMessages(
+          turns.flatMap((turn) => [
+            { id: `h-${turn.id}-q`, role: "user" as const, text: turn.question },
+            { id: `h-${turn.id}-a`, role: "assistant" as const, text: turn.response },
+          ]),
+        );
+        setConversationId(requestedConversationId);
+        setError(null);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 120);
+      } catch (caught) {
+        if (!cancelled) setError(messageOf(caught));
+      } finally {
+        if (!cancelled) navigation.setParams({ conversationId: undefined });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedConversationId, navigation]);
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -101,6 +156,45 @@ export default function AssistantScreen(_props: Props) {
     }
   };
 
+  const hasUserMessage = messages.some((message) => message.role === "user");
+
+  const resetChat = () => {
+    setMessages([{ id: "welcome", role: "assistant", text: WELCOME }]);
+    setConversationId(undefined);
+    setError(null);
+    setSuggestions((current) => current.slice(0, 4));
+  };
+
+  const settings =
+    (devices.find((device) => device.id === selectedId) ?? devices[0])?.settings ?? null;
+
+  const statusItems: SensorStatusItem[] = [];
+  if (context?.latest_temperature != null) {
+    statusItems.push({
+      icon: "thermometer",
+      label: "Nhiệt độ",
+      value: `${context.latest_temperature.toFixed(1)}°C`,
+      tone: temperatureTone(context.latest_temperature, settings),
+    });
+  }
+  if (context?.latest_humidity != null) {
+    statusItems.push({
+      icon: "water-percent",
+      label: "Độ ẩm",
+      value: `${Math.round(context.latest_humidity)}%`,
+      tone: humidityTone(context.latest_humidity, settings),
+    });
+  }
+  if (context?.latest_light_lux != null) {
+    statusItems.push({
+      icon: "white-balance-sunny",
+      label: "Ánh sáng",
+      value: `${Math.round(context.latest_light_lux)} lux`,
+      tone: lightTone(context.latest_light_lux, settings),
+    });
+  }
+  const hasWarning = statusItems.some((item) => item.tone !== "ok" && item.tone !== "unknown");
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -110,8 +204,35 @@ export default function AssistantScreen(_props: Props) {
       <PageHeader
         title="Trợ lý học tập"
         subtitle="AI kết hợp dữ liệu môi trường bàn học"
-        right={<Tag text="AI" tone="primary" />}
+        right={
+          <View style={styles.headerActions}>
+            <Tag text="AI" tone="primary" />
+            <IconButton
+              icon="history"
+              size={22}
+              onPress={() => navigation.navigate("AssistantHistory")}
+              accessibilityLabel="Lịch sử trò chuyện"
+            />
+            <IconButton
+              icon="chat-plus-outline"
+              size={22}
+              onPress={resetChat}
+              accessibilityLabel="Bắt đầu cuộc trò chuyện mới"
+            />
+          </View>
+        }
       />
+
+      {statusItems.length > 0 ? (
+        <View>
+          <SensorStatusRow items={statusItems} />
+          {hasWarning ? (
+            <Text variant="labelSmall" style={styles.sensorLegend}>
+              Xanh: đạt ngưỡng · Xanh dương: thấp · Cam: cần chú ý · Đỏ: cao
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <ScrollView
         ref={scrollRef}
@@ -133,12 +254,13 @@ export default function AssistantScreen(_props: Props) {
                 message.role === "user" ? styles.userBubble : styles.assistantBubble,
               ]}
             >
-              <Text
-                variant="bodyMedium"
-                style={message.role === "user" ? styles.userText : styles.assistantText}
-              >
-                {message.text}
-              </Text>
+              {message.role === "user" ? (
+                <Text variant="bodyMedium" style={styles.userText}>
+                  {message.text}
+                </Text>
+              ) : (
+                <RichMessageText text={message.text} thresholds={settings} />
+              )}
               {message.role === "assistant" && message.source ? (
                 <Text variant="labelSmall" style={styles.source}>
                   {SOURCE_LABELS[message.source]}
@@ -168,21 +290,36 @@ export default function AssistantScreen(_props: Props) {
           </View>
         ) : null}
 
-        {suggestions.length > 0 ? (
+        {hasUserMessage ? null : (
           <View style={styles.suggestions}>
             <Text variant="labelMedium" style={styles.suggestionsTitle}>
-              Gợi ý câu hỏi
+              Câu hỏi nhanh
             </Text>
             <View style={styles.chipWrap}>
-              {suggestions.map((suggestion) => (
+              {QUICK_PROMPTS.map((prompt) => (
                 <Chip
-                  key={suggestion}
+                  key={prompt}
                   icon="arrow-right"
-                  onPress={() => void send(suggestion)}
+                  onPress={() => void send(prompt)}
                   style={styles.chip}
                   compact
                 >
-                  {suggestion.length > 60 ? `${suggestion.slice(0, 57)}…` : suggestion}
+                  {prompt}
+                </Chip>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {suggestions.length > 0 ? (
+          <View style={styles.suggestions}>
+            <Text variant="labelMedium" style={styles.suggestionsTitle}>
+              Gợi ý cho bạn
+            </Text>
+            <View style={styles.chipWrap}>
+              {suggestions.map((suggestion) => (
+                <Chip key={suggestion} style={styles.chip} compact>
+                  {suggestion}
                 </Chip>
               ))}
             </View>
@@ -190,8 +327,7 @@ export default function AssistantScreen(_props: Props) {
         ) : null}
 
         <Text variant="labelSmall" style={styles.disclaimer}>
-          Cảm biến môi trường không phải thiết bị y tế. Trợ lý không chẩn đoán bệnh; hãy gặp
-          chuyên gia y tế nếu bạn có triệu chứng sức khỏe.
+          Cảm biến không phải thiết bị y tế và không thay thế tư vấn y tế.
         </Text>
       </ScrollView>
 
@@ -224,6 +360,13 @@ export default function AssistantScreen(_props: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.background },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  sensorLegend: {
+    color: palette.muted,
+    fontSize: 10,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   messages: { padding: spacing.lg, paddingBottom: spacing.md, gap: spacing.md },
   bubbleRow: { flexDirection: "row" },
   bubbleRowUser: { justifyContent: "flex-end" },

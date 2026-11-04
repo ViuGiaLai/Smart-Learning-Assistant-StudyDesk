@@ -46,6 +46,7 @@ export default function PlansScreen({ navigation }: Props) {
   const [minutes, setMinutes] = useState("25");
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Cache: 15s TTL — plans can change quickly
   const lastLoadedAt = useRef<number>(0);
@@ -124,6 +125,15 @@ export default function PlansScreen({ navigation }: Props) {
     });
   };
 
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await load(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const start = async (plan: StudyPlan) => {
     setStarting(plan.id);
     setError(null);
@@ -145,20 +155,25 @@ export default function PlansScreen({ navigation }: Props) {
     filter === "all" ? plans : plans.filter((plan) => plan.status === filter);
 
   return (
-    <Screen>
-      <PageHeader
-        title="Kế hoạch học tập"
-        subtitle="Chia nhỏ mục tiêu thành từng phiên học"
-        onBack={() => navigation.goBack()}
-        right={
-          <IconButton
-            icon="plus"
-            mode="contained"
-            onPress={() => setDialogOpen(true)}
-            accessibilityLabel="Thêm kế hoạch"
-          />
-        }
-      />
+    <Screen
+      refreshing={refreshing}
+      onRefresh={() => void refresh()}
+      header={
+        <PageHeader
+          title="Kế hoạch học tập"
+          subtitle="Chia nhỏ mục tiêu thành từng phiên học"
+          onBack={() => navigation.goBack()}
+          right={
+            <IconButton
+              icon="plus"
+              mode="contained"
+              onPress={() => setDialogOpen(true)}
+              accessibilityLabel="Thêm kế hoạch"
+            />
+          }
+        />
+      }
+    >
 
       {error ? (
         <Card style={styles.errorCard}>

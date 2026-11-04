@@ -2,6 +2,7 @@ import { API_URL, REQUEST_TIMEOUT_MS } from "./config";
 import { session } from "./session";
 import type {
   AssistantContext,
+  AssistantHistoryItem,
   AuthResponse,
   ChatResponse,
   CommandResponse,
@@ -318,6 +319,9 @@ export const api = {
   },
   assistantContext(): Promise<AssistantContext> {
     return request("/api/assistant/context");
+  },
+  assistantHistory(limit = 50): Promise<AssistantHistoryItem[]> {
+    return request(`/api/assistant/history?limit=${limit}`);
   },
 };
 

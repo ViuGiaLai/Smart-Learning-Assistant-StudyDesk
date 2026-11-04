@@ -5,7 +5,7 @@ export type TabParamList = {
   Focus: undefined;
   Environment: undefined;
   Stats: undefined;
-  Assistant: undefined;
+  Assistant: { conversationId?: string } | undefined;
 };
 
 export type RootStackParamList = {
@@ -17,4 +17,5 @@ export type RootStackParamList = {
   Plans: undefined;
   Device: { register?: boolean } | undefined;
   Notifications: undefined;
+  AssistantHistory: undefined;
 };

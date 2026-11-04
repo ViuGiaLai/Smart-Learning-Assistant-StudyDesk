@@ -35,11 +35,11 @@ export function PageHeader({ title, subtitle, onBack, right }: PageHeaderProps) 
           </View>
         )}
         <View style={styles.textWrap}>
-          <Text variant="titleLarge" style={styles.title}>
+          <Text variant="titleLarge" style={styles.title} numberOfLines={1}>
             {title}
           </Text>
           {subtitle ? (
-            <Text variant="bodySmall" style={styles.subtitle}>
+            <Text variant="bodySmall" style={styles.subtitle} numberOfLines={2}>
               {subtitle}
             </Text>
           ) : null}
@@ -55,6 +55,8 @@ const styles = StyleSheet.create({
     backgroundColor: palette.background,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.border,
   },
   row: { flexDirection: "row", alignItems: "center", minHeight: 48 },
   logo: {

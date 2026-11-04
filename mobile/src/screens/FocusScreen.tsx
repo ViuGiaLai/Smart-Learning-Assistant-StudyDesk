@@ -183,11 +183,14 @@ export default function FocusScreen(_props: Props) {
   const running = session?.status === "running";
 
   return (
-    <Screen>
-      <PageHeader
-        title="Tập trung"
-        subtitle="Pomodoro 25/5, thời gian do máy chủ xác nhận"
-      />
+    <Screen
+      header={
+        <PageHeader
+          title="Tập trung"
+          subtitle="Pomodoro 25/5, thời gian do máy chủ xác nhận"
+        />
+      }
+    >
 
       <View style={styles.modeRow}>
         <Button

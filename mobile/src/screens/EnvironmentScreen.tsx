@@ -39,6 +39,7 @@ export default function EnvironmentScreen({ navigation }: Props) {
 
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const lastLoadedAt = useRef<number>(0);
 
   const selected = devices.find((device) => device.id === selectedId) ?? null;
@@ -81,6 +82,16 @@ export default function EnvironmentScreen({ navigation }: Props) {
     if (selectedId) void loadReadings(true);
   }, [selectedId, loadReadings]);
 
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshDevices();
+      await loadReadings(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // REST fallback when the WebSocket is unavailable.
   useEffect(() => {
     if (connected) return;
@@ -118,8 +129,11 @@ export default function EnvironmentScreen({ navigation }: Props) {
 
   if (!selected) {
     return (
-      <Screen>
-        <PageHeader title="Môi trường học tập" subtitle="Giám sát cảm biến bàn học" />
+      <Screen
+        header={
+          <PageHeader title="Môi trường học tập" subtitle="Giám sát cảm biến bàn học" />
+        }
+      >
         <EmptyState
           icon="access-point-network-off"
           title="Chưa có thiết bị IoT"
@@ -139,12 +153,17 @@ export default function EnvironmentScreen({ navigation }: Props) {
   }
 
   return (
-    <Screen>
-      <PageHeader
-        title="Môi trường học tập"
-        subtitle="Cập nhật trực tiếp từ cảm biến bàn học"
-        right={<StatusPill online={online} label={online ? "Online" : "Offline"} />}
-      />
+    <Screen
+      refreshing={refreshing}
+      onRefresh={() => void refresh()}
+      header={
+        <PageHeader
+          title="Môi trường học tập"
+          subtitle="Cập nhật trực tiếp từ cảm biến bàn học"
+          right={<StatusPill online={online} label={online ? "Online" : "Offline"} />}
+        />
+      }
+    >
 
       {devices.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>

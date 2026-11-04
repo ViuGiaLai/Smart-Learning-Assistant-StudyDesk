@@ -40,6 +40,7 @@ export default function StatsScreen(_props: Props) {
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [goalInput, setGoalInput] = useState("120");
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Cache: avoid re-fetching if data is fresh (30s TTL)
   const lastLoadedAt = useRef<number>(0);
@@ -87,6 +88,15 @@ export default function StatsScreen(_props: Props) {
     }
   };
 
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await load(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const chartData = (stats?.daily ?? []).map((day) => ({
     label: weekdayLabel(day.date),
     value: formatMinutes(day.focused_seconds),
@@ -94,8 +104,13 @@ export default function StatsScreen(_props: Props) {
   }));
 
   return (
-    <Screen>
-      <PageHeader title="Thống kê học tập" subtitle="Theo dõi tiến độ theo ngày và tuần" />
+    <Screen
+      refreshing={refreshing}
+      onRefresh={() => void refresh()}
+      header={
+        <PageHeader title="Thống kê học tập" subtitle="Theo dõi tiến độ theo ngày và tuần" />
+      }
+    >
 
       {error ? (
         <Card style={styles.errorCard}>
