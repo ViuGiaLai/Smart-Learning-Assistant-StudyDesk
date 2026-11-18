@@ -127,7 +127,7 @@ thật (nhiệt độ, lux, thời gian học). Giao diện hiển thị nguồn
 
 1. Vào **Thiết bị**.
 2. Đổi ngưỡng ánh sáng từ 150 → 300 lux, lưu.
-3. Gửi lệnh **Bật LED**, sau đó **Tắt LED**.
+3. Nhấn nút **Bật đèn** (nút đổi thành **Tắt đèn**), nhấn lại để tắt.
 4. Tắt **Thu thập dữ liệu**.
 5. Chạy lại simulator → API trả `collection_enabled=false`, không lưu reading mới.
 6. Bật lại thu thập.

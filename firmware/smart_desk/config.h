@@ -8,14 +8,14 @@
 #define WIFI_SSID "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
 
-// MQTT broker
-// - Wokwi: test.mosquitto.org (public, no auth - demo only!)
-// - Real device: your LAN broker (e.g. 192.168.1.10) or a TLS broker.
-// Point the backend's MQTT_HOST at the same broker.
-#define MQTT_HOST "broker.emqx.io"
+// MQTT broker: Mosquitto rieng chay tren VPS (allow_anonymous false).
+// - Tai khoan phai trung password_file cua broker.
+// - Backend FastAPI phai tro ve cung broker nay (MQTT_HOST/MQTT_USERNAME/MQTT_PASSWORD).
+// - Khong nen commit mat khau that khi nop bai: dung config.h rieng hoac bien moi truong.
+#define MQTT_HOST "138.2.109.17"
 #define MQTT_PORT 1883
-#define MQTT_USERNAME ""
-#define MQTT_PASSWORD ""
+#define MQTT_USERNAME "admin"
+#define MQTT_PASSWORD "viu852005"
 #define TOPIC_PREFIX "smartstudy_demo_2f7c91"
 
 // Must match the device_code registered in the app.

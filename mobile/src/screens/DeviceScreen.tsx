@@ -108,6 +108,10 @@ export default function DeviceScreen({ navigation, route }: Props) {
   );
   const [savingSettings, setSavingSettings] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [ledBusy, setLedBusy] = useState(false);
+  // Trạng thái LED chỉ là "bản sao lệnh gần nhất" phía client: backend chưa lưu trạng thái LED,
+  // nên chỉ đổi nhãn nút sau khi lệnh được gửi thành công xuống thiết bị.
+  const [ledStates, setLedStates] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -197,6 +201,27 @@ export default function DeviceScreen({ navigation, route }: Props) {
     setTimeout(() => {
       void sendCommand("set_buzzer", false);
     }, 800);
+  };
+
+  const ledOn = selected ? (ledStates[selected.id] ?? false) : false;
+
+  const toggleLed = async () => {
+    if (!selected || ledBusy) return;
+    const next = !ledOn;
+    setLedBusy(true);
+    try {
+      const result = await api.sendCommand(selected.id, "set_led", next);
+      if (result.delivered) {
+        setLedStates((current) => ({ ...current, [selected.id]: next }));
+        setMessage(next ? "Đã bật đèn bàn học." : "Đã tắt đèn bàn học.");
+      } else {
+        setMessage("MQTT chưa kết nối — lệnh chưa được gửi tới thiết bị.");
+      }
+    } catch (error) {
+      setMessage(messageOf(error));
+    } finally {
+      setLedBusy(false);
+    }
   };
 
   const removeDevice = (device: Device) => {
@@ -317,25 +342,23 @@ export default function DeviceScreen({ navigation, route }: Props) {
                 </View>
                 <View style={styles.commandRow}>
                   <Button
-                    mode="contained-tonal"
-                    icon="lightbulb-on-outline"
+                    mode={ledOn ? "contained" : "contained-tonal"}
+                    icon={ledOn ? "lightbulb-on" : "lightbulb-on-outline"}
                     compact
-                    onPress={() => void sendCommand("set_led", true)}
+                    loading={ledBusy}
+                    disabled={ledBusy}
+                    accessibilityLabel={ledOn ? "Tắt đèn bàn học" : "Bật đèn bàn học"}
+                    onPress={() => void toggleLed()}
                   >
-                    Bật LED
-                  </Button>
-                  <Button
-                    mode="outlined"
-                    icon="lightbulb-off-outline"
-                    compact
-                    onPress={() => void sendCommand("set_led", false)}
-                  >
-                    Tắt LED
+                    {ledOn ? "Tắt đèn" : "Bật đèn"}
                   </Button>
                   <Button mode="outlined" icon="bell-ring-outline" compact onPress={() => void beep()}>
                     Còi
                   </Button>
                 </View>
+                <Text variant="labelSmall" style={styles.ledState}>
+                  {ledOn ? "Đèn bàn học đang bật" : "Đèn bàn học đang tắt"}
+                </Text>
                 <Button
                   mode="text"
                   icon="access-point-check"
@@ -542,6 +565,7 @@ const styles = StyleSheet.create({
   chip: { marginRight: spacing.sm },
   deviceHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   commandRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
+  ledState: { color: palette.muted, marginTop: spacing.xs },
   fieldGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   field: { width: "48%", marginBottom: spacing.sm },
   fieldInput: { backgroundColor: palette.surface },

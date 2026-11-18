@@ -45,6 +45,40 @@ Khi sửa firmware, chép lại `wokwi/sketch.ino` để hai bản luôn khớp.
 > Nếu dán code vào tab sai (ví dụ tạo `smart_desk.ino`), Wokwi báo
 > `config.h: No such file` hoặc không tìm thấy `setup()`. Xoá file sai và làm lại bước 2.
 
+### 2.1.1 Breadboard và cách đấu dây
+
+`wokwi/diagram.json` dùng breadboard full-size (`wokwi-breadboard`, id `bb1`) đặt cạnh
+ESP32. Linh kiện nối vào lỗ của board bằng dây jumper, đúng như khi lắp mạch thật:
+
+| Hàng trên board | Cắm vào | Nối tiếp tới |
+|---|---|---|
+| 8 | `dht1:SDA` | `esp:4` (GPIO4) |
+| 20 | `pir1:OUT` | `esp:27` (GPIO27) |
+| 34 | `ldr1:AO` | `esp:34` (GPIO34, ADC1) |
+| 44 | `r1:1` | `esp:2` (GPIO2) |
+| 48 | `r1:2` | `led1:A` (qua trở 220 Ω) |
+| 60 | `bz1:1` | `esp:25` (GPIO25) |
+
+| Thanh nguồn | Cắm vào | Nối tới |
+|---|---|---|
+| `tp` (đỏ, trên) | `dht1:VCC`, `ldr1:VCC` | `esp:3V3` |
+| `bp` (đỏ, dưới) | `pir1:VCC` | `esp:5V` (chân `VIN` trên board thật) |
+| `tn` (đen, trên) | `dht1:GND`, `ldr1:GND`, `led1:C`, `bz1:2` | `esp:GND.1` |
+| `bn` (đen, dưới) | `pir1:GND` | `esp:GND.2` |
+
+Hai thanh đen `tn` và `bn` được nối với nhau bằng dây cầu `tn.1 ↔ bn.1` (trên breadboard
+thật hai thanh này tách rời). **Không** cầu `tp ↔ bp`: thanh trên là 3,3 V còn thanh dưới
+là 5 V lấy từ chân `VIN`, nối chúng lại là chập nguồn. Mỗi hàng a–e là **một điểm nối**,
+nên linh kiện cắm ở cột `b` và dây từ ESP32 cắm ở cột `e` cùng hàng là thông mạch.
+
+Hàng được đánh số từ trái sang phải (1–63), cột `a`–`e` là nửa trên của board. Bản Wokwi
+đặt tên chân nguồn 5 V là `5V` chứ không phải `VIN`; dùng `VIN` trong `diagram.json`
+sẽ khiến Wokwi bỏ qua dây đó mà không báo lỗi.
+
+> Các linh kiện đang được nối bằng dây jumper vào lỗ board. Muốn chúng trông như
+> **cắm trực tiếp** trên board, kéo part vào đúng lỗ trong Wokwi: trình soạn thảo tự
+> thêm cờ `$bb` vào `connections` và giữ nguyên netlist.
+
 ### 2.2 Cấu hình trong `wokwi/config.h`
 
 ```cpp

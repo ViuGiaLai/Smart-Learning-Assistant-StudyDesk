@@ -3,29 +3,54 @@
   "author": "Smart Learning Assistant",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-dht22", "id": "dht1", "top": -140, "left": 220, "attrs": {} },
-    { "type": "wokwi-pir-motion-sensor", "id": "pir1", "top": 40, "left": 230, "attrs": {} },
-    { "type": "wokwi-photoresistor-sensor", "id": "ldr1", "top": -150, "left": 380, "attrs": { "lux": "500" } },
-    { "type": "wokwi-led", "id": "led1", "top": 160, "left": 260, "attrs": { "color": "red" } },
-    { "type": "wokwi-resistor", "id": "r1", "top": 220, "left": 170, "attrs": { "value": "220" } },
-    { "type": "wokwi-buzzer", "id": "bz1", "top": 170, "left": 400, "attrs": { "volume": "0.1" } }
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -100, "left": -160, "attrs": {} },
+
+    { "type": "wokwi-dht22", "id": "dht1", "top": -190, "left": 65, "attrs": {} },
+    { "type": "wokwi-pir-motion-sensor", "id": "pir1", "top": -180, "left": 163, "attrs": {} },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": -175,
+      "left": 256,
+      "attrs": { "lux": "500" }
+    },
+    { "type": "wokwi-resistor", "id": "r1", "top": -185, "left": 430, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "led1", "top": -150, "left": 470, "attrs": { "color": "red" } },
+    { "type": "wokwi-buzzer", "id": "bz1", "top": -170, "left": 552, "attrs": { "volume": "0.1" } },
+
+    { "type": "wokwi-breadboard", "id": "bb1", "top": 0, "left": 0, "attrs": {} }
   ],
   "connections": [
-    ["esp:3V3", "dht1:VCC", "red", []],
-    ["esp:GND.1", "dht1:GND", "black", []],
-    ["esp:4", "dht1:SDA", "green", []],
-    ["esp:VIN", "pir1:VCC", "red", []],
-    ["esp:GND.2", "pir1:GND", "black", []],
-    ["esp:27", "pir1:OUT", "orange", []],
-    ["esp:3V3", "ldr1:VCC", "red", []],
-    ["esp:GND.3", "ldr1:GND", "black", []],
-    ["esp:34", "ldr1:AO", "purple", []],
-    ["esp:2", "r1:1", "blue", []],
-    ["r1:2", "led1:A", "blue", []],
-    ["esp:GND.4", "led1:C", "black", []],
-    ["esp:25", "bz1:1", "yellow", []],
-    ["esp:GND.5", "bz1:2", "black", []]
+    ["esp:3V3", "bb1:tp.1", "red", []],
+    ["esp:GND.1", "bb1:tn.1", "black", []],
+    ["esp:5V", "bb1:bp.1", "red", []],
+    ["esp:GND.2", "bb1:bn.1", "black", []],
+    ["bb1:tn.1", "bb1:bn.1", "black", []],
+
+    ["dht1:VCC", "bb1:tp.3", "red", []],
+    ["dht1:GND", "bb1:tn.3", "black", []],
+    ["dht1:SDA", "bb1:8t.b", "green", []],
+    ["esp:4", "bb1:8t.e", "green", []],
+
+    ["pir1:VCC", "bb1:bp.3", "red", []],
+    ["pir1:GND", "bb1:bn.3", "black", []],
+    ["pir1:OUT", "bb1:20t.b", "orange", []],
+    ["esp:27", "bb1:20t.e", "orange", []],
+
+    ["ldr1:VCC", "bb1:tp.6", "red", []],
+    ["ldr1:GND", "bb1:tn.6", "black", []],
+    ["ldr1:AO", "bb1:34t.b", "purple", []],
+    ["esp:34", "bb1:34t.e", "purple", []],
+
+    ["esp:2", "bb1:44t.a", "blue", []],
+    ["r1:1", "bb1:44t.c", "blue", []],
+    ["r1:2", "bb1:48t.b", "blue", []],
+    ["led1:A", "bb1:48t.d", "blue", []],
+    ["led1:C", "bb1:tn.10", "black", []],
+
+    ["esp:25", "bb1:60t.a", "yellow", []],
+    ["bz1:1", "bb1:60t.c", "yellow", []],
+    ["bz1:2", "bb1:tn.12", "black", []]
   ],
   "dependencies": {}
 }

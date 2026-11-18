@@ -3,7 +3,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Button, Chip, ProgressBar, Text } from "react-native-paper";
+import { Button, Chip, Dialog, Portal, ProgressBar, Text, TextInput } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
 import type { StudySession } from "../api/types";
@@ -18,6 +18,8 @@ import { formatClock, formatDuration, formatTime } from "../utils/format";
 type Props = BottomTabScreenProps<TabParamList, "Focus">;
 
 const DURATIONS = [15, 25, 45, 50];
+const MIN_MINUTES = 1;
+const MAX_MINUTES = 240;
 const BREAK_SECONDS = 5 * 60;
 
 function messageOf(error: unknown): string {
@@ -29,6 +31,10 @@ function messageOf(error: unknown): string {
 export default function FocusScreen(_props: Props) {
   const [session, setSession] = useState<StudySession | null>(null);
   const [selectedMinutes, setSelectedMinutes] = useState(25);
+  const [customMinutes, setCustomMinutes] = useState<number | null>(null);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customInput, setCustomInput] = useState("30");
+  const [customError, setCustomError] = useState<string | null>(null);
   const [remaining, setRemaining] = useState(25 * 60);
   const [total, setTotal] = useState(25 * 60);
   const [breakRemaining, setBreakRemaining] = useState(BREAK_SECONDS);
@@ -41,6 +47,7 @@ export default function FocusScreen(_props: Props) {
     const planned = active.planned_minutes * 60;
     setSession(active);
     setSelectedMinutes(active.planned_minutes);
+    setCustomMinutes(DURATIONS.includes(active.planned_minutes) ? null : active.planned_minutes);
     setTotal(planned);
     setRemaining(Math.max(0, planned - active.duration_seconds));
     setMode("focus");
@@ -131,8 +138,41 @@ export default function FocusScreen(_props: Props) {
     }
   }, [finish, mode, remaining, session?.status]);
 
-  const start = async () => {
-    setBusy(true);
+  const pickMinutes = (minutes: number) => {
+    setSelectedMinutes(minutes);
+    setCustomMinutes(null);
+    setRemaining(minutes * 60);
+    setTotal(minutes * 60);
+  };
+
+  const openCustom = () => {
+    setCustomInput(String(selectedMinutes));
+    setCustomError(null);
+    setShowCustom(true);
+  };
+
+  const nudgeCustom = (delta: number) => {
+    const parsed = Number.parseInt(customInput.replace(/[^0-9]/g, ""), 10);
+    const base = Number.isFinite(parsed) ? parsed : 0;
+    const next = Math.min(MAX_MINUTES, Math.max(MIN_MINUTES, base + delta));
+    setCustomInput(String(next));
+    setCustomError(null);
+  };
+
+  const applyCustom = () => {
+    const parsed = Number.parseInt(customInput.replace(/[^0-9]/g, ""), 10);
+    if (!Number.isFinite(parsed) || parsed < MIN_MINUTES || parsed > MAX_MINUTES) {
+      setCustomError(`Nhập số phút từ ${MIN_MINUTES} đến ${MAX_MINUTES}.`);
+      return;
+    }
+    setSelectedMinutes(parsed);
+    setCustomMinutes(parsed);
+    setRemaining(parsed * 60);
+    setTotal(parsed * 60);
+    setShowCustom(false);
+  };
+
+  const start = async () => {    setBusy(true);
     setError(null);
     try {
       const created = await api.startSession(selectedMinutes);
@@ -250,23 +290,30 @@ export default function FocusScreen(_props: Props) {
 
       {!session ? (
         <>
-          <SectionTitle title="Chọn thời lượng" />
+          <SectionTitle title="Chọn thời lượng tập trung" />
           <View style={styles.chips}>
             {DURATIONS.map((minutes) => (
               <Chip
                 key={minutes}
-                selected={selectedMinutes === minutes}
-                onPress={() => {
-                  setSelectedMinutes(minutes);
-                  setRemaining(minutes * 60);
-                  setTotal(minutes * 60);
-                }}
+                selected={customMinutes === null && selectedMinutes === minutes}
+                onPress={() => pickMinutes(minutes)}
                 style={styles.chip}
               >
                 {minutes} phút
               </Chip>
             ))}
+            <Chip
+              icon={customMinutes === null ? "plus" : "pencil-outline"}
+              selected={customMinutes !== null}
+              onPress={openCustom}
+              style={styles.chip}
+            >
+              {customMinutes === null ? "Tùy chỉnh" : `${customMinutes} phút`}
+            </Chip>
           </View>
+          <Text variant="bodySmall" style={styles.durationHint}>
+            Chọn nhanh 15, 25, 45 hoặc 50 phút — hoặc tự nhập từ {MIN_MINUTES} đến {MAX_MINUTES} phút.
+          </Text>
           <Button
             mode="contained"
             icon="play"
@@ -391,6 +438,72 @@ export default function FocusScreen(_props: Props) {
         </>
       )}
 
+      <Portal>
+        <Dialog visible={showCustom} onDismiss={() => setShowCustom(false)} style={styles.dialog}>
+          <Dialog.Title>Thời lượng tùy chỉnh</Dialog.Title>
+          <Dialog.Content style={styles.dialogContent}>
+            <Text variant="bodySmall" style={styles.muted}>
+              Nhập số phút bạn muốn tập trung, từ {MIN_MINUTES} đến {MAX_MINUTES}. Ví dụ 30, 60 hoặc 90.
+            </Text>
+            <View style={styles.stepperRow}>
+              <Button
+                mode="outlined"
+                compact
+                icon="minus"
+                onPress={() => nudgeCustom(-5)}
+                style={styles.stepButton}
+              >
+                5
+              </Button>
+              <TextInput
+                value={customInput}
+                onChangeText={(value) => {
+                  setCustomInput(value.replace(/[^0-9]/g, ""));
+                  setCustomError(null);
+                }}
+                keyboardType="number-pad"
+                mode="outlined"
+                dense
+                style={styles.stepInput}
+                outlineColor={customError ? palette.danger : palette.border}
+                activeOutlineColor={customError ? palette.danger : palette.primary}
+              />
+              <Button
+                mode="outlined"
+                compact
+                icon="plus"
+                onPress={() => nudgeCustom(5)}
+                style={styles.stepButton}
+              >
+                5
+              </Button>
+            </View>
+            <View style={styles.quickRow}>
+              {[5, 10, 30, 60, 90].map((minutes) => (
+                <Chip key={minutes} compact onPress={() => setCustomInput(String(minutes))}>
+                  {minutes} phút
+                </Chip>
+              ))}
+            </View>
+            {customError ? (
+              <Text variant="bodySmall" style={styles.dialogError}>
+                {customError}
+              </Text>
+            ) : (
+              <Text variant="bodySmall" style={styles.muted}>
+                Phiên học sẽ kết thúc sau {customInput || "?"} phút.
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowCustom(false)}>Hủy</Button>
+            <Button mode="contained" onPress={applyCustom}>
+              Áp dụng
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
       <SectionTitle title="Vì sao thời gian do máy chủ tính?" />
       <Card>
         <View style={styles.noteRow}>
@@ -429,6 +542,14 @@ const styles = StyleSheet.create({
   errorText: { color: palette.danger },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: { marginBottom: spacing.xs },
+  durationHint: { color: palette.muted, marginTop: spacing.xs, lineHeight: 18 },
+  dialog: { borderRadius: 16 },
+  dialogContent: { gap: spacing.sm },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stepButton: { borderRadius: 10 },
+  stepInput: { flex: 1, backgroundColor: palette.surface, textAlign: "center" },
+  quickRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  dialogError: { color: palette.danger },
   primaryButton: { borderRadius: 12, marginTop: spacing.md },
   primaryContent: { paddingVertical: 6 },
   centerHint: { textAlign: "center", color: palette.muted, marginTop: spacing.sm },

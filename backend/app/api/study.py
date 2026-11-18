@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.time import utcnow
-from app.db.models import Notification, StudyPlan, StudySession
+from app.db.models import Device, Notification, StudyPlan, StudySession
 from app.schemas.study import (
     FinishSessionRequest,
     StartSessionRequest,
@@ -18,9 +20,37 @@ from app.schemas.study import (
     StudyStatsOut,
 )
 from app.services import fcm
+from app.services.mqtt import mqtt_service
 from app.services.stats import get_study_stats, session_duration_seconds
 
 router = APIRouter(tags=["Study"])
+
+BUZZER_ON_SECONDS = 1.5
+COMPLETE_GRACE_SECONDS = 5
+
+
+async def _ring_buzzer(db, user_id: str) -> None:
+    """Báo hết giờ bằng còi trên bàn học: bật 1 giây rồi tắt.
+
+    Chỉ là nỗ lực tối đa: thiết bị offline hoặc broker mất kết nối thì bỏ qua.
+    """
+    devices = list(
+        (await db.execute(select(Device).where(Device.user_id == user_id))).scalars()
+    )
+    if not devices:
+        return
+    online = [d for d in devices if d.status == "online" and d.last_seen_at is not None]
+    pool = online or devices
+    device = max(pool, key=lambda d: d.last_seen_at or d.created_at)
+    code = device.device_code
+    if not await mqtt_service.send_command(code, {"action": "set_buzzer", "value": True}):
+        return
+
+    async def _off() -> None:
+        await asyncio.sleep(BUZZER_ON_SECONDS)
+        await mqtt_service.send_command(code, {"action": "set_buzzer", "value": False})
+
+    asyncio.create_task(_off())
 
 
 def _session_out(session: StudySession, now=None) -> StudySessionOut:
@@ -162,6 +192,11 @@ async def _finish(session: StudySession, cancelled: bool, db) -> StudySessionOut
             notification.content,
             {"type": "study_completed", "session_id": session.id},
         )
+    # Hết giờ (không phải huỷ giữa chừng) thì còi bàn học kêu báo hiệu.
+    if not cancelled and session.accumulated_seconds >= (
+        session.planned_minutes * 60 - COMPLETE_GRACE_SECONDS
+    ):
+        await _ring_buzzer(db, session.user_id)
     return _session_out(session)
 
 
