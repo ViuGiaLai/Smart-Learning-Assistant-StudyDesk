@@ -28,6 +28,13 @@
 #define LED_PIN 2
 #define BUZZER_PIN 25
 #define BUZZER_FREQUENCY 2000
+// Relay dieu khien quat (LED led2 trong Wokwi dai dien cho quat that).
+// Sau nay chi can thay LED mo phong bang quat that o dau ra relay.
+#define FAN_PIN 26
+#define FAN_HYSTERESIS_C 2.0f
+// 0 = relay kich muc CAO (Wokwi module dat transistor "pnp").
+// 1 = relay kich muc THAP (nhieu module relay ngoai thi truong).
+#define FAN_ACTIVE_LOW 0
 
 // Sampling: DHT22 needs >= 2 s between reads.
 #define SAMPLE_INTERVAL_MS 10000

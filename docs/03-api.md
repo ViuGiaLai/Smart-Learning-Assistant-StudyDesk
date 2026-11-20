@@ -213,6 +213,8 @@ Phản hồi `201` (device key **chỉ hiện một lần**):
     "no_motion_minutes": 15,
     "collection_enabled": true,
     "auto_control": true,
+    "alerts_enabled": true,
+    "fan_auto": true,
     "sample_interval_seconds": 10
   },
   "created_at": "2026-11-01T03:00:00Z",
@@ -269,7 +271,13 @@ Cập nhật tên và/hoặc ngưỡng. `settings` là **partial merge**.
 }
 ```
 
-Nếu MQTT đang kết nối, backend gửi `set_thresholds` xuống thiết bị.
+Nếu MQTT đang kết nối, backend gửi `set_thresholds` xuống thiết bị (gồm cả `auto_control`
+và `light_min_lux`, để firmware biết có tự điều khiển đèn hay không).
+
+**Đèn tự động nằm ở firmware**, không phải backend: ESP32 đo lux từ LDR và tự bật đèn khi
+tối hơn `light_min_lux`, tự tắt khi sáng hơn `light_min_lux + 60` (hysteresis 60 lux để
+đèn không nhấp nháy). Khi người dùng bấm `set_led`, firmware coi đó là lệnh tay và giữ
+nguyên trạng thái 30 phút trước khi auto được phép điều khiển lại.
 
 ### `DELETE /api/devices/{device_id}`
 
@@ -322,8 +330,10 @@ Trả về reading mới nhất hoặc `null`.
 
 | Action | `value` | Ý nghĩa |
 |---|---|---|
-| `set_led` | bool | Bật/tắt LED |
-| `set_buzzer` | bool | Bật/tắt buzzer |
+| `set_led` | bool | Bật/tắt LED thủ công (firmware giữ trạng thái này 30 phút) |
+| `set_fan` | bool | Bật/tắt quạt qua relay thủ công (firmware giữ trạng thái này 30 phút) |
+| `set_fan_auto` | bool | Bật/tắt chế độ quạt tự động theo nhiệt độ |
+| `set_buzzer` | bool | Bật/tắt buzzer (hết giờ học backend tự gửi bật 1,5 giây) |
 | `set_alerts` | bool | Bật/tắt cảnh báo tại thiết bị |
 | `set_thresholds` | object | Cập nhật ngưỡng (merge) |
 | `ping` | null | Kiểm tra thiết bị còn sống |
@@ -363,12 +373,15 @@ Body:
   "light": 1820,
   "light_lux": 156.2,
   "motion_detected": true,
+  "fan_on": true,
+  "fan_auto": true,
   "timestamp": "2026-11-01T03:20:00Z"
 }
 ```
 
 - `light` là ADC thô 0–4095.
 - `light_lux` tuỳ chọn; nếu bỏ trống backend tự ước lượng từ `light`.
+- `fan_on` / `fan_auto` là thông tin kèm theo để debug; backend hiện bỏ qua (app suy ra trạng thái quạt từ nhiệt độ + `fan_auto`).
 - `timestamp` tuỳ chọn; nếu lệch quá 24 giờ sẽ dùng giờ server.
 - `device_id` trong body không bắt buộc và không dùng để xác thực.
 
@@ -482,6 +495,11 @@ Chỉ phiên `paused`. Đặt `last_resumed_at=now`, `status=running`.
 
 Không có body. Kết thúc phiên, cộng thời gian còn lại, đặt `ended_at`, `status=completed`
 (hoặc `cancelled`). Nếu phiên gắn với plan và plan chưa hoàn thành, plan được đánh dấu `completed`.
+
+Nếu **không huỷ** và thời gian đã học ≥ `planned_minutes*60 − 5 giây`, backend gửi
+`set_buzzer=true` xuống thiết bị đang online (chọn theo `last_seen_at` mới nhất), sau
+**1,5 giây** gửi `false` để còi tắt. Broker mất kết nối thì bỏ qua — không làm hỏng
+response kết thúc phiên.
 
 ### `POST /api/study-sessions/finish`
 

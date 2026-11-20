@@ -58,13 +58,19 @@ ESP32. Linh kiện nối vào lỗ của board bằng dây jumper, đúng như k
 | 44 | `r1:1` | `esp:2` (GPIO2) |
 | 48 | `r1:2` | `led1:A` (qua trở 220 Ω) |
 | 60 | `bz1:1` | `esp:25` (GPIO25) |
+| 12 | `relay1:IN` | `esp:26` (GPIO26) |
+| 13 | `relay1:VCC` | `bp` (5 V) |
+| 14 | `relay1:GND` | `bn` (GND) |
+| 54 | `relay1:NO` + `r2:1` | qua trở 220 Ω tới LED quạt |
+| 55 | `r2:2` + `led2:A` | LED xanh mô phỏng quạt |
+| 56 | `led2:C` | `tn` (GND) |
 
 | Thanh nguồn | Cắm vào | Nối tới |
 |---|---|---|
 | `tp` (đỏ, trên) | `dht1:VCC`, `ldr1:VCC` | `esp:3V3` |
-| `bp` (đỏ, dưới) | `pir1:VCC` | `esp:5V` (chân `VIN` trên board thật) |
-| `tn` (đen, trên) | `dht1:GND`, `ldr1:GND`, `led1:C`, `bz1:2` | `esp:GND.1` |
-| `bn` (đen, dưới) | `pir1:GND` | `esp:GND.2` |
+| `bp` (đỏ, dưới) | `pir1:VCC`, `relay1:VCC`, `relay1:COM` | `esp:5V` (chân `VIN` trên board thật) |
+| `tn` (đen, trên) | `dht1:GND`, `ldr1:GND`, `led1:C`, `bz1:2`, `led2:C` | `esp:GND.1` |
+| `bn` (đen, dưới) | `pir1:GND`, `relay1:GND` | `esp:GND.2` |
 
 Hai thanh đen `tn` và `bn` được nối với nhau bằng dây cầu `tn.1 ↔ bn.1` (trên breadboard
 thật hai thanh này tách rời). **Không** cầu `tp ↔ bp`: thanh trên là 3,3 V còn thanh dưới
@@ -133,6 +139,11 @@ Muốn dùng broker riêng: chạy Mosquitto trên VPS có IP công khai, hoặc
 
 - `light=1001` là ADC thô, `~540 lux` là giá trị firmware tự tính và gửi kèm.
 - Gửi lệnh từ app sẽ thấy: `[mqtt] command=set_led value=1` và LED đỏ sáng.
+- Kéo slider LDR xuống dưới ngưỡng (~150 lux) sẽ thấy log `[auto] den BAT: ...` và LED tự sáng;
+  kéo lên trên ~210 lux sẽ thấy `[auto] den TAT: ...`. Không cần app, không cần mạng.
+- Sau khi bấm **Bật đèn**/**Tắt đèn** trên app, firmware khoá auto 30 phút để lệnh tay có hiệu lực.
+- Quạt: đặt DHT22 lên **> 30 °C** → Serial in `[auto] quat BAT`, LED xanh sau relay sáng;
+  hạ xuống **≤ 28 °C** → `[auto] quat TAT`. Lệnh `set_fan` từ app cũng khoá tay 30 phút.
 
 Tương tác trong Wokwi:
 
@@ -141,7 +152,8 @@ Tương tác trong Wokwi:
 | DHT22 | Click để đổi nhiệt độ/độ ẩm |
 | PIR | Click để bật/tắt chuyển động |
 | LDR | Kéo thanh sáng (slider) bên cạnh module |
-| LED | Chỉ quan sát |
+| LED đỏ | Chỉ quan sát (đèn bàn học) |
+| Relay + LED xanh | Chỉ quan sát (LED xanh = quạt đang chạy) |
 
 ### 2.5 Lưu project trên Wokwi
 
@@ -174,9 +186,11 @@ Topic `smartstudy_demo_2f7c91/<DEVICE_CODE>/command`:
 
 ```json
 { "action": "set_led", "value": true }
+{ "action": "set_fan", "value": true }
+{ "action": "set_fan_auto", "value": true }
 { "action": "set_buzzer", "value": false }
 { "action": "set_alerts", "value": true }
-{ "action": "set_thresholds", "value": { "temperature_max": 29 } }
+{ "action": "set_thresholds", "value": { "temperature_max": 29, "fan_auto": true } }
 { "action": "ping" }
 ```
 
@@ -270,7 +284,12 @@ Lưu ý:
 4. Sau ≤ 10 giây, app hiện **Online**, 24.0 °C, 40 %, 540 lux.
 5. Gửi lệnh `set_led` từ app → Serial in `[mqtt] command=set_led value=1`, LED sáng.
 6. Click PIR → `motion_detected=true`.
-7. Kéo LDR xuống ~0 → cảnh báo ánh sáng yếu + LED bật.
+7. Kéo LDR xuống dưới 150 lux → Serial in `[auto] den BAT`, LED tự sáng (không cần app).
+8. Kéo LDR lên trên ~210 lux → Serial in `[auto] den TAT`, LED tự tắt.
+9. Kéo nhiệt độ DHT22 lên > 30 °C → Serial in `[auto] quat BAT`, LED xanh sau relay sáng;
+   hạ ≤ 28 °C → `[auto] quat TAT`.
+10. Bấm **Bật quạt** trên app → Serial in `[mqtt] command=set_fan value=1`, LED xanh sáng.
+11. Kết thúc phiên tập trung đúng giờ → còi kêu ~1,5 giây (`set_buzzer` bật rồi tắt).
 
 > Chỉ chạy **một** nguồn telemetry cho mỗi `DEVICE_CODE`: Wokwi **hoặc**
 > `tools/simulate_device.py`, không chạy cả hai (dữ liệu sẽ xen kẽ).

@@ -13,7 +13,7 @@ import {
 } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
-import type { Device, DeviceSettings, RegisteredDevice } from "../api/types";
+import type { Device, DeviceSettings, RegisteredDevice, SensorReading } from "../api/types";
 import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, KeyValueRow, SectionTitle, StatusPill } from "../components/ui";
@@ -35,6 +35,7 @@ interface SettingsForm {
   sample_interval_seconds: string;
   collection_enabled: boolean;
   auto_control: boolean;
+  fan_auto: boolean;
 }
 
 function toForm(settings: DeviceSettings): SettingsForm {
@@ -48,6 +49,7 @@ function toForm(settings: DeviceSettings): SettingsForm {
     sample_interval_seconds: String(settings.sample_interval_seconds),
     collection_enabled: settings.collection_enabled,
     auto_control: settings.auto_control,
+    fan_auto: settings.fan_auto ?? true,
   };
 }
 
@@ -112,6 +114,9 @@ export default function DeviceScreen({ navigation, route }: Props) {
   // Trạng thái LED chỉ là "bản sao lệnh gần nhất" phía client: backend chưa lưu trạng thái LED,
   // nên chỉ đổi nhãn nút sau khi lệnh được gửi thành công xuống thiết bị.
   const [ledStates, setLedStates] = useState<Record<string, boolean>>({});
+  const [fanBusy, setFanBusy] = useState(false);
+  const [fanStates, setFanStates] = useState<Record<string, boolean>>({});
+  const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,6 +125,26 @@ export default function DeviceScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (selected) setForm(toForm(selected.settings));
+  }, [selected]);
+
+  // Nhiệt độ mới nhất để hiển thị quạt có đang tự chạy hay không.
+  useEffect(() => {
+    if (!selected) {
+      setLatestReading(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .latestReading(selected.id)
+      .then((reading) => {
+        if (!cancelled) setLatestReading(reading);
+      })
+      .catch(() => {
+        if (!cancelled) setLatestReading(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
   const doRegister = async () => {
@@ -152,6 +177,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
       sample_interval_seconds: Number(form.sample_interval_seconds),
       collection_enabled: form.collection_enabled,
       auto_control: form.auto_control,
+      fan_auto: form.fan_auto,
     };
     for (const [key, value] of Object.entries(parsed)) {
       if (typeof value === "number" && (!Number.isFinite(value) || value < 0)) {
@@ -180,7 +206,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
   };
 
   const sendCommand = async (
-    action: "set_led" | "set_buzzer" | "ping",
+    action: "set_led" | "set_fan" | "set_buzzer" | "ping",
     value?: boolean,
   ) => {
     if (!selected) return;
@@ -204,6 +230,35 @@ export default function DeviceScreen({ navigation, route }: Props) {
   };
 
   const ledOn = selected ? (ledStates[selected.id] ?? false) : false;
+
+  // Nhiệt độ mới nhất + ngưỡng để suy ra quạt có đang tự chạy hay không.
+  const latestTemperature = latestReading?.temperature ?? null;
+  const temperatureMax = selected?.settings.temperature_max ?? 30;
+  const fanAutoActive =
+    Boolean(selected?.settings.fan_auto) &&
+    latestTemperature !== null &&
+    latestTemperature > temperatureMax;
+  const fanManual = selected ? fanStates[selected.id] : undefined;
+  const fanOn = fanManual ?? fanAutoActive;
+
+  const toggleFan = async () => {
+    if (!selected || fanBusy) return;
+    const next = !fanOn;
+    setFanBusy(true);
+    try {
+      const result = await api.sendCommand(selected.id, "set_fan", next);
+      if (result.delivered) {
+        setFanStates((current) => ({ ...current, [selected.id]: next }));
+        setMessage(next ? "Đã bật quạt." : "Đã tắt quạt.");
+      } else {
+        setMessage("MQTT chưa kết nối — lệnh chưa được gửi tới thiết bị.");
+      }
+    } catch (error) {
+      setMessage(messageOf(error));
+    } finally {
+      setFanBusy(false);
+    }
+  };
 
   const toggleLed = async () => {
     if (!selected || ledBusy) return;
@@ -359,6 +414,11 @@ export default function DeviceScreen({ navigation, route }: Props) {
                 <Text variant="labelSmall" style={styles.ledState}>
                   {ledOn ? "Đèn bàn học đang bật" : "Đèn bàn học đang tắt"}
                 </Text>
+                {selected.settings.auto_control ? (
+                  <Text variant="labelSmall" style={styles.ledState}>
+                    Chế độ tự động: ESP32 đang tự bật/tắt đèn theo độ sáng của phòng.
+                  </Text>
+                ) : null}
                 <Button
                   mode="text"
                   icon="access-point-check"
@@ -367,6 +427,54 @@ export default function DeviceScreen({ navigation, route }: Props) {
                 >
                   Kiểm tra kết nối
                 </Button>
+              </Card>
+
+              <Card style={styles.card}>
+                <View style={styles.deviceHeader}>
+                  <View style={styles.fanHeaderText}>
+                    <Text variant="titleSmall" style={styles.cardTitle}>
+                      Quạt làm mát (Relay)
+                    </Text>
+                    <Text variant="bodySmall" style={styles.muted}>
+                      Relay GPIO26 · LED xanh trên Wokwi mô phỏng quạt
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={fanOn ? "fan" : "fan-off"}
+                    size={28}
+                    color={fanOn ? palette.primary : palette.muted}
+                  />
+                </View>
+                <View style={styles.commandRow}>
+                  <Button
+                    mode={fanOn ? "contained" : "contained-tonal"}
+                    icon={fanOn ? "fan-off" : "fan"}
+                    compact
+                    loading={fanBusy}
+                    disabled={fanBusy}
+                    accessibilityLabel={fanOn ? "Tắt quạt" : "Bật quạt"}
+                    onPress={() => void toggleFan()}
+                  >
+                    {fanOn ? "Tắt quạt" : "Bật quạt"}
+                  </Button>
+                  <Text variant="labelSmall" style={styles.fanState}>
+                    {fanManual === undefined
+                      ? fanOn
+                        ? "Đang bật (tự động)"
+                        : "Đang tắt"
+                      : fanOn
+                        ? "Đang bật (thủ công)"
+                        : "Đang tắt (thủ công)"}
+                  </Text>
+                </View>
+                <Text variant="labelSmall" style={styles.ledState}>
+                  {latestTemperature !== null
+                    ? `Nhiệt độ hiện tại ${latestTemperature.toFixed(1)}°C. Tự bật khi > ${temperatureMax}°C, tự tắt khi ≤ ${(temperatureMax - 2).toFixed(0)}°C.`
+                    : `Tự bật khi > ${temperatureMax}°C, tự tắt khi ≤ ${(temperatureMax - 2).toFixed(0)}°C (chưa có dữ liệu nhiệt độ).`}
+                </Text>
+                <Text variant="labelSmall" style={styles.ledState}>
+                  Lệnh bấm tay được ưu tiên 30 phút, sau đó quạt tự động theo nhiệt độ trở lại.
+                </Text>
               </Card>
 
               <SectionTitle title="Ngưỡng cảnh báo & quyền riêng tư" />
@@ -456,16 +564,34 @@ export default function DeviceScreen({ navigation, route }: Props) {
                   <View style={styles.switchRow}>
                     <View style={styles.switchLabel}>
                       <Text variant="bodyMedium" style={styles.switchTitle}>
-                        Tự động bật LED khi vượt ngưỡng
+                        Tự động bật đèn khi thiếu sáng
                       </Text>
                       <Text variant="bodySmall" style={styles.muted}>
-                        Backend gửi lệnh MQTT khi phát hiện bất thường.
+                        ESP32 tự đọc cảm biến ánh sáng: tối thì bật đèn, đủ sáng thì tắt. Bạn vẫn bật/tắt tay được — lệnh tay được ưu tiên 30 phút.
                       </Text>
                     </View>
                     <Switch
                       value={form.auto_control}
                       onValueChange={(value) =>
                         setForm((current) => (current ? { ...current, auto_control: value } : current))
+                      }
+                      color={palette.primary}
+                    />
+                  </View>
+
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchLabel}>
+                      <Text variant="bodyMedium" style={styles.switchTitle}>
+                        Tự động bật quạt khi nhiệt độ cao
+                      </Text>
+                      <Text variant="bodySmall" style={styles.muted}>
+                        ESP32 đọc DHT22: nhiệt độ vượt {form.temperature_max || "30"}°C thì bật relay, giảm 2°C thì tắt để tránh bật/tắt liên tục.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={form.fan_auto}
+                      onValueChange={(value) =>
+                        setForm((current) => (current ? { ...current, fan_auto: value } : current))
                       }
                       color={palette.primary}
                     />
@@ -565,6 +691,8 @@ const styles = StyleSheet.create({
   chip: { marginRight: spacing.sm },
   deviceHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   commandRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
+  fanHeaderText: { flex: 1, paddingRight: spacing.sm },
+  fanState: { color: palette.muted, alignSelf: "center" },
   ledState: { color: palette.muted, marginTop: spacing.xs },
   fieldGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   field: { width: "48%", marginBottom: spacing.sm },

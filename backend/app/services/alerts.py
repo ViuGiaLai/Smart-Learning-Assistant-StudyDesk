@@ -151,18 +151,6 @@ async def evaluate_environment_alerts(
     return created
 
 
-async def auto_control_alert_outputs(device: Device, alerts: list[dict]) -> None:
-    """Turn the desk LED on when the environment needs attention.
-
-    Imported lazily to avoid a circular import with the MQTT service.
-    """
-    from app.services.mqtt import mqtt_service
-
-    if not _settings(device).get("auto_control", True) or not alerts:
-        return
-    await mqtt_service.send_command(device.device_code, {"action": "set_led", "value": True})
-
-
 def reported_alert_copy(
     alert_type: str,
     *,

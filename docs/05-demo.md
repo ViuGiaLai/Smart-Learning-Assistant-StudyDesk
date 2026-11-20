@@ -84,7 +84,8 @@ python tools\simulate_device.py --device-code STUDY_DESK_001 --scenario low_ligh
 - `light_lux` giảm mạnh.
 - Sau mẫu đầu tiên vượt ngưỡng, app nhận sự kiện `alert`.
 - Thông báo "Ánh sáng bàn học chưa đủ" xuất hiện.
-- LED trên thiết bị (nếu đang chạy Wokwi) được bật do `auto_control=true`.
+- Nếu đang chạy Wokwi, kéo slider LDR xuống dưới 150 lux → firmware tự bật LED (log `[auto] den BAT`).
+  Lưu ý: script giả lập gửi dữ liệu qua mạng, **không** điều khiển LED thật — LED do firmware đọc cảm biến.
 
 > Cảnh báo có cooldown 10 phút, nên không spam mỗi 3 giây.
 
@@ -103,14 +104,15 @@ Gọi lệnh trên **hai lần**. Lần 1: `stored=true`. Lần 2: `stored=false
 ### Bước 4 — Phiên học Pomodoro (1–2 phút)
 
 1. Vào tab **Tập trung**.
-2. Chọn 25 phút, nhấn bắt đầu.
+2. Chọn 25 phút (hoặc **＋ Tùy chỉnh** để nhập số phút bất kỳ từ 1–240), nhấn bắt đầu.
 3. Thử **Tạm dừng**, sau đó **Tiếp tục**.
 4. Đóng app, mở lại → phiên vẫn còn (server lưu trạng thái).
-5. Kết thúc phiên.
+5. Kết thúc phiên. Nếu để đồng hồ chạy hết giờ, thiết bị đang online sẽ **kêu còi ~1,5 giây**.
 6. Vào **Thống kê** → thời gian hôm nay tăng; biểu đồ 7 ngày cập nhật.
 
 **Điểm nhấn:** thời gian do server tính bằng `accumulated_seconds` +
-`last_resumed_at`, không tin đồng hồ điện thoại.
+`last_resumed_at`, không tin đồng hồ điện thoại; còi báo hết giờ cũng do backend gửi
+lệnh MQTT nên mọi client đều dùng được.
 
 ### Bước 5 — Trợ lý AI (1 phút)
 
@@ -128,9 +130,12 @@ thật (nhiệt độ, lux, thời gian học). Giao diện hiển thị nguồn
 1. Vào **Thiết bị**.
 2. Đổi ngưỡng ánh sáng từ 150 → 300 lux, lưu.
 3. Nhấn nút **Bật đèn** (nút đổi thành **Tắt đèn**), nhấn lại để tắt.
-4. Tắt **Thu thập dữ liệu**.
-5. Chạy lại simulator → API trả `collection_enabled=false`, không lưu reading mới.
-6. Bật lại thu thập.
+4. Che LDR (Wokwi: kéo slider xuống dưới 150 lux) → đèn **tự bật**; kéo lên trên 210 lux → **tự tắt**.
+5. Kéo nhiệt độ DHT22 lên **> 30 °C** → thẻ **Quạt** báo *Đang bật (tự động)*, LED xanh sau relay sáng.
+   Hạ xuống **≤ 28 °C** → quạt tự tắt. Bấm **Bật quạt** để điều khiển tay (khoá auto 30 phút).
+6. Tắt **Thu thập dữ liệu**.
+7. Chạy lại simulator → API trả `collection_enabled=false`, không lưu reading mới.
+8. Bật lại thu thập.
 
 **Điểm nhấn:** quyền riêng tư do người dùng kiểm soát; mọi API kiểm tra thiết bị thuộc
 người dùng.
@@ -150,7 +155,7 @@ Xem `docs/04-wokwi.md`. Tóm tắt:
 2. Đăng ký `STUDY_DESK_001` trong app.
 3. Chạy Wokwi.
 4. Click PIR, kéo thanh sáng LDR, đổi nhiệt độ DHT22.
-5. Gửi lệnh LED từ app → LED Wokwi sáng.
+5. Gửi lệnh LED/quạt từ app → LED đỏ và LED xanh sau relay trên Wokwi sáng.
 
 ## 4. Kiểm thử tự động
 
@@ -159,7 +164,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Kỳ vọng: **22 passed**.
+Kỳ vọng: **48 passed** (gồm 4 test cho còi báo hết giờ và 1 test relay/quạt).
 
 ```powershell
 .\.venv\Scripts\python.exe -m ruff check app tests scripts

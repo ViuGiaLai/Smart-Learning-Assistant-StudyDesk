@@ -46,7 +46,7 @@ backend để:
 | `app/schemas/` | Pydantic request/response, ràng buộc dữ liệu |
 | `app/services/iot.py` | Chuẩn hoá telemetry, dedupe, phát WebSocket |
 | `app/services/mqtt.py` | Vòng lặp kết nối MQTT, subscribe, publish lệnh, LWT |
-| `app/services/alerts.py` | Đánh giá ngưỡng, cooldown, tự điều khiển LED |
+| `app/services/alerts.py` | Đánh giá ngưỡng, cooldown, tạo thông báo cảnh báo |
 | `app/services/stats.py` | Tính thời gian học, thống kê theo timezone, clamp timestamp |
 | `app/services/ai.py` | Dựng context, gọi Gemini, fallback theo luật |
 | `app/services/realtime.py` | Quản lý các kết nối WebSocket theo thiết bị |
@@ -142,8 +142,14 @@ App ──POST /api/devices/{id}/commands──► Backend
 
 - `delivered=false` nếu MQTT chưa kết nối; API vẫn trả 202 kèm `detail` để UI hiển thị.
 - Khi người dùng đổi ngưỡng qua `PATCH /api/devices/{id}`, backend tự gửi
-  `set_thresholds` xuống thiết bị.
-- Cảnh báo môi trường có thể tự bật LED nếu `auto_control=true`.
+  `set_thresholds` xuống thiết bị (kèm `auto_control`, `light_min_lux`, chu kỳ lấy mẫu).
+- **Đèn học thông minh do firmware quyết định**: ESP32 đọc LDR, tối hơn `light_min_lux`
+  thì tự bật đèn, sáng hơn ngưỡng + 60 lux (hysteresis) thì tự tắt. Việc này chạy cả khi
+  mất Wi-Fi/MQTT nên phản hồi tức thì và không phụ thuộc backend.
+- Lệnh `set_led` từ app là **điều khiển tay**: firmware giữ trạng thái đó 30 phút
+  (`manualHoldUntil`) trước khi cho auto điều khiển lại.
+- Hết giờ học, backend gửi `set_buzzer=true` 1,5 giây xuống thiết bị đang online để còi
+  báo (không phụ thuộc app đang mở màn hình nào).
 
 ## 6. WebSocket
 

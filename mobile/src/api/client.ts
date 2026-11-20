@@ -215,7 +215,14 @@ export const api = {
   },
   sendCommand(
     deviceId: string,
-    action: "set_led" | "set_buzzer" | "set_alerts" | "ping" | "set_thresholds",
+    action:
+      | "set_led"
+      | "set_fan"
+      | "set_fan_auto"
+      | "set_buzzer"
+      | "set_alerts"
+      | "ping"
+      | "set_thresholds",
     value?: boolean | Record<string, unknown>,
   ): Promise<CommandResponse> {
     return request(`/api/devices/${deviceId}/commands`, {

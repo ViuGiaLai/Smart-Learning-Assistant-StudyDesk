@@ -69,6 +69,10 @@ export default function DashboardScreen({ navigation }: Props) {
   const { latest: liveReading, status: liveStatus } = useDeviceStream(selectedId);
   const reading = liveReading ?? latest;
   const online = liveStatus ? liveStatus === "online" : selectedDevice?.status === "online";
+  const fanAutoActive =
+    Boolean(selectedDevice?.settings.fan_auto) &&
+    reading?.temperature != null &&
+    reading.temperature > (selectedDevice?.settings.temperature_max ?? 30);
 
   const loadData = useCallback(
     async (options: { isPull?: boolean; force?: boolean } = {}) => {
@@ -325,6 +329,12 @@ export default function DashboardScreen({ navigation }: Props) {
               label="Chuyển động"
               value={reading?.motion_detected ? "Có" : "Không"}
               tone={reading?.motion_detected ? "primary" : "muted"}
+            />
+            <StatTile
+              icon={fanAutoActive ? "fan" : "fan-off"}
+              label="Quạt"
+              value={fanAutoActive ? "Bật" : "Tắt"}
+              tone={fanAutoActive ? "primary" : "muted"}
             />
           </View>
 

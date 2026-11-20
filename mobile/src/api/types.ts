@@ -28,6 +28,7 @@ export interface DeviceSettings {
   no_motion_minutes: number;
   collection_enabled: boolean;
   auto_control: boolean;
+  fan_auto: boolean;
   sample_interval_seconds: number;
 }
 

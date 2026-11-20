@@ -186,9 +186,8 @@ async def send_command(
     device = await get_owned_device(device_id, user, db)
     topic = f"{settings.mqtt_topic_prefix}/{device.device_code}/command"
 
-    if payload.action in {"set_led", "set_buzzer", "set_alerts"} and not isinstance(
-        payload.value, bool
-    ):
+    boolean_actions = {"set_led", "set_fan", "set_fan_auto", "set_buzzer", "set_alerts"}
+    if payload.action in boolean_actions and not isinstance(payload.value, bool):
         raise HTTPException(status_code=422, detail="value phải là true/false")
     if payload.action == "set_thresholds":
         if not isinstance(payload.value, dict):

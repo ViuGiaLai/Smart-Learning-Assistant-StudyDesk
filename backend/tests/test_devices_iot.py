@@ -183,6 +183,37 @@ def test_command_validates_value(client: TestClient, auth: dict, device: dict) -
     assert response.status_code == 422
 
 
+def test_fan_relay_command_and_auto_setting(
+    client: TestClient, auth: dict, device: dict
+) -> None:
+    assert device["settings"]["fan_auto"] is True
+
+    command = client.post(
+        f"/api/devices/{device['id']}/commands",
+        json={"action": "set_fan", "value": True},
+        headers=auth,
+    )
+    assert command.status_code == 202
+    assert command.json()["payload"] == {"action": "set_fan", "value": True}
+
+    bad = client.post(
+        f"/api/devices/{device['id']}/commands",
+        json={"action": "set_fan", "value": "yes"},
+        headers=auth,
+    )
+    assert bad.status_code == 422
+
+    updated = client.patch(
+        f"/api/devices/{device['id']}",
+        json={"settings": {"fan_auto": False}},
+        headers=auth,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["settings"]["fan_auto"] is False
+    # Các ngưỡng cũ vẫn được giữ nguyên khi bật/tắt tự động quạt.
+    assert updated.json()["settings"]["temperature_max"] == 30.0
+
+
 def test_websocket_snapshot_and_auth(client: TestClient, auth: dict, device: dict) -> None:
     client.post(
         "/api/iot/telemetry", json=_telemetry("msg-ws"), headers=_device_headers(device)

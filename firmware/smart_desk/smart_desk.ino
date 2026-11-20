@@ -2,7 +2,8 @@
 // Smart Learning Assistant - Study Desk Firmware
 // Board: ESP32 DevKit V1 (Wokwi: board-esp32-devkit-c-v4)
 // Sensors: DHT22 (GPIO4), PIR HC-SR501 (GPIO27), LDR module (GPIO34)
-// Outputs: LED (GPIO2), active buzzer (GPIO25)
+// Outputs: LED (GPIO2), active buzzer (GPIO25), relay/fan (GPIO26)
+//          LED2 + 220ohm tren Wokwi mo phong quat dang chay.
 //
 // Data flow: read -> queue -> MQTT smartstudy/<DEVICE_CODE>/telemetry
 // Commands:  MQTT smartstudy/<DEVICE_CODE>/command
@@ -46,7 +47,19 @@ uint8_t queueCount = 0;
 
 bool ledState = false;
 bool buzzerState = false;
+bool fanState = false;
 bool alertsEnabled = true;
+// Tự động bật đèn khi tối / tắt khi đủ sáng (đồng bộ từ app qua set_thresholds).
+bool autoControl = true;
+// Tự động bật quạt khi nhiệt độ vượt temperature_max (do app đồng bộ).
+bool fanAuto = true;
+// Người dùng vừa bấm tay trên app thì tạm ngưng tự động để lệnh tay có hiệu lực.
+uint32_t manualHoldUntil = 0;
+uint32_t fanManualHoldUntil = 0;
+
+// Trễ 60 lux quanh ngưỡng: tránh đèn bật/tắt liên tục khi ánh sáng dao động.
+static const int LIGHT_HYSTERESIS_LUX = 60;
+static const uint32_t MANUAL_HOLD_MS = 30UL * 60UL * 1000UL;
 
 float temperatureMin = TEMP_MIN_DEFAULT;
 float temperatureMax = TEMP_MAX_DEFAULT;
@@ -108,12 +121,63 @@ void setLed(bool value) {
   digitalWrite(LED_PIN, value ? HIGH : LOW);
 }
 
+// Điều khiển đèn theo ánh sáng đo được: tối thì bật, đủ sáng thì tắt.
+// Bỏ qua khi người dùng đang giữ quyền điều khiển tay.
+void applyAutoLed(float lux) {
+  if (!autoControl) return;
+  if (millis() < manualHoldUntil) return;
+  if (lux < (float)lightMinLux) {
+    if (!ledState) {
+      setLed(true);
+      Serial.printf("[auto] den BAT: ~%.0f lux < nguong %d\n", lux, lightMinLux);
+    }
+  } else if (lux >= (float)(lightMinLux + LIGHT_HYSTERESIS_LUX)) {
+    if (ledState) {
+      setLed(false);
+      Serial.printf("[auto] den TAT: ~%.0f lux >= nguong %d\n", lux,
+                    lightMinLux + LIGHT_HYSTERESIS_LUX);
+    }
+  }
+}
+
 void setBuzzer(bool value) {
   buzzerState = value;
   if (value) {
     tone(BUZZER_PIN, BUZZER_FREQUENCY);
   } else {
     noTone(BUZZER_PIN);
+  }
+}
+
+// Quat that duoc noi qua relay: chi can doi dau ra relay tu LED mo phong
+// sang quat that, code khong phai sua.
+void setFan(bool value) {
+  fanState = value;
+#if FAN_ACTIVE_LOW
+  digitalWrite(FAN_PIN, value ? LOW : HIGH);
+#else
+  digitalWrite(FAN_PIN, value ? HIGH : LOW);
+#endif
+}
+
+// Tu dong bat quat khi nong: > temperatureMax thi BAT, <= temperatureMax -
+// FAN_HYSTERESIS_C thi TAT (tre 2 do C de quat khong bat/tat lien tuc).
+void applyAutoFan(float temperature) {
+  if (!fanAuto) return;
+  if (millis() < fanManualHoldUntil) return;
+  if (isnan(temperature)) return;
+  if (temperature > temperatureMax) {
+    if (!fanState) {
+      setFan(true);
+      Serial.printf("[auto] quat BAT: %.1fC > nguong %.1fC\n", temperature,
+                    temperatureMax);
+    }
+  } else if (temperature <= (temperatureMax - FAN_HYSTERESIS_C)) {
+    if (fanState) {
+      setFan(false);
+      Serial.printf("[auto] quat TAT: %.1fC <= %.1fC\n", temperature,
+                    temperatureMax - FAN_HYSTERESIS_C);
+    }
   }
 }
 
@@ -148,6 +212,8 @@ bool publishReading(const PendingReading &reading) {
   doc["light"] = reading.light;
   doc["light_lux"] = roundf(estimateLux(reading.light) * 10.0f) / 10.0f;
   doc["motion_detected"] = reading.motion;
+  doc["fan_on"] = fanState;
+  doc["fan_auto"] = fanAuto;
   String timestamp = isoUtc(reading.recordedEpoch);
   if (timestamp.length() > 0) doc["timestamp"] = timestamp;
 
@@ -180,6 +246,8 @@ bool postReadingHttp(const PendingReading &reading) {
   doc["light"] = reading.light;
   doc["light_lux"] = roundf(estimateLux(reading.light) * 10.0f) / 10.0f;
   doc["motion_detected"] = reading.motion;
+  doc["fan_on"] = fanState;
+  doc["fan_auto"] = fanAuto;
   String timestamp = isoUtc(reading.recordedEpoch);
   if (timestamp.length() > 0) doc["timestamp"] = timestamp;
 
@@ -226,9 +294,18 @@ void applyThresholds(JsonObject thresholds) {
     seconds = constrain(seconds, 2, 300);
     sampleIntervalMs = (uint32_t)seconds * 1000UL;
   }
-  Serial.printf("[config] temp=[%.1f, %.1f] humidity=[%.0f, %.0f] light_min=%d interval=%lums\n",
-                temperatureMin, temperatureMax, humidityMin, humidityMax, lightMinLux,
-                (unsigned long)sampleIntervalMs);
+  if (!thresholds["auto_control"].isNull()) {
+    autoControl = thresholds["auto_control"].as<bool>();
+  }
+  if (!thresholds["fan_auto"].isNull()) {
+    fanAuto = thresholds["fan_auto"].as<bool>();
+    // Tắt tự động thì giữ nguyên trạng thái quạt hiện tại cho người dùng tự bật/tắt.
+  }
+  Serial.printf(
+      "[config] temp=[%.1f, %.1f] humidity=[%.0f, %.0f] light_min=%d interval=%lums auto=%d "
+      "fan_auto=%d\n",
+      temperatureMin, temperatureMax, humidityMin, humidityMax, lightMinLux,
+      (unsigned long)sampleIntervalMs, autoControl ? 1 : 0, fanAuto ? 1 : 0);
 }
 
 void onCommand(char *topic, byte *payload, unsigned int length) {
@@ -242,7 +319,13 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
   bool value = doc["value"] | false;
 
   if (strcmp(action, "set_led") == 0) {
+    manualHoldUntil = millis() + MANUAL_HOLD_MS;
     setLed(value);
+  } else if (strcmp(action, "set_fan") == 0) {
+    fanManualHoldUntil = millis() + MANUAL_HOLD_MS;
+    setFan(value);
+  } else if (strcmp(action, "set_fan_auto") == 0) {
+    fanAuto = value;
   } else if (strcmp(action, "set_buzzer") == 0) {
     setBuzzer(value);
   } else if (strcmp(action, "set_alerts") == 0) {
@@ -373,6 +456,7 @@ void sampleAndPublish() {
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
   int light = analogRead(LDR_PIN);
+  float lightLux = estimateLux(light);
 
   // HC-SR501 needs ~60s to stabilise after power-on.
   bool motion = false;
@@ -390,11 +474,14 @@ void sampleAndPublish() {
   reading.recordedEpoch = currentEpoch();
 
   Serial.printf("[sensor] t=%.1fC h=%.1f%% light=%d (~%.0f lux) motion=%d\n", temperature,
-                humidity, light, estimateLux(light), motion ? 1 : 0);
+                humidity, light, lightLux, motion ? 1 : 0);
 
   if (isnan(temperature) || isnan(humidity)) {
     Serial.println("[sensor] DHT22 read failed (check pull-up / wiring)");
   }
+
+  applyAutoLed(lightLux);
+  applyAutoFan(temperature);
 
   enqueueReading(reading);
   flushAllTransports();
@@ -405,15 +492,9 @@ void sampleAndPublish() {
   }
 #endif
 
-  // Local fallback alert when the backend is unreachable.
+  // Còi nhắc khi phòng quá nóng và mất kết nối backend (đèn đã do applyAutoLed lo).
   if (alertsEnabled && !mqtt.connected()) {
-    float lightLux = estimateLux(light);
-    bool tooDark = lightLux < (float)lightMinLux;
     bool tooHot = !isnan(temperature) && temperature > temperatureMax;
-    setLed(tooDark || tooHot);
-    if (tooDark) {
-      Serial.printf("[alert] dark: ~%.0f lux < %d lux\n", lightLux, lightMinLux);
-    }
     if (tooHot) {
       setBuzzer(true);
     } else {
@@ -434,8 +515,10 @@ void setup() {
   pinMode(LDR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
   setLed(false);
   setBuzzer(false);
+  setFan(false);
 
   dht.begin();
   connectWifi();

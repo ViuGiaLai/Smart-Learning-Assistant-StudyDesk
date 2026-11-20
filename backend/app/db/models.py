@@ -44,6 +44,8 @@ DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "auto_control": True,
     # Create in-app notifications / push when a threshold is crossed.
     "alerts_enabled": True,
+    # Let the firmware switch the relay/fan on when it gets too hot.
+    "fan_auto": True,
     # Sampling interval requested from the firmware (seconds, >= 2 for DHT22).
     "sample_interval_seconds": 10,
 }

@@ -151,10 +151,6 @@ async def ingest_telemetry(
             {"event": "alert", "device_id": device.id, "data": alert},
         )
 
-    if created_alerts:
-        # Avoid a missing-coroutine import cycle: the MQTT service is lazy here.
-        await alert_service.auto_control_alert_outputs(device, created_alerts)
-
     for alert in created_alerts:
         await fcm.send_to_user(
             db,

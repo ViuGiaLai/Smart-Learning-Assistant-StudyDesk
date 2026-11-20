@@ -23,6 +23,7 @@ class DeviceSettings(BaseModel):
     collection_enabled: bool = DEFAULT_DEVICE_SETTINGS["collection_enabled"]
     auto_control: bool = DEFAULT_DEVICE_SETTINGS["auto_control"]
     alerts_enabled: bool = DEFAULT_DEVICE_SETTINGS["alerts_enabled"]
+    fan_auto: bool = DEFAULT_DEVICE_SETTINGS["fan_auto"]
     sample_interval_seconds: int = Field(
         DEFAULT_DEVICE_SETTINGS["sample_interval_seconds"], ge=2, le=300
     )
@@ -78,7 +79,9 @@ class DeviceStatusOut(BaseModel):
     collection_enabled: bool
 
 
-CommandAction = Literal["set_led", "set_buzzer", "set_alerts", "set_thresholds", "ping"]
+CommandAction = Literal[
+    "set_led", "set_fan", "set_fan_auto", "set_buzzer", "set_alerts", "set_thresholds", "ping"
+]
 
 
 class CommandRequest(BaseModel):
