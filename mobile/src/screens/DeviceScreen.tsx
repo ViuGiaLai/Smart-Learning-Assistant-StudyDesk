@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, ScrollView, StyleSheet, View } from "react-native";
 import {
   Button,
   Dialog,
@@ -16,7 +16,7 @@ import { ApiError, api } from "../api/client";
 import type { Device, DeviceSettings, RegisteredDevice, SensorReading } from "../api/types";
 import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
-import { Card, KeyValueRow, SectionTitle, StatusPill } from "../components/ui";
+import { Card, KeyValueRow, SectionTitle, StatusPill, Tag } from "../components/ui";
 import type { RootStackParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
@@ -59,6 +59,49 @@ function messageOf(error: unknown): string {
   return "Thao tác thất bại";
 }
 
+// Biểu tượng quạt có hiệu ứng quay khi bật, dừng khi tắt.
+function FanIcon({
+  spinning,
+  size = 24,
+  color,
+}: {
+  spinning: boolean;
+  size?: number;
+  color?: string;
+}) {
+  const spinRef = useRef(new Animated.Value(0));
+  const spin = spinRef.current;
+
+  useEffect(() => {
+    if (spinning) {
+      Animated.loop(
+        Animated.timing(spin, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      spin.setValue(0);
+    }
+  }, [spinning, spin]);
+
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  return (
+    <Animated.View style={{ transform: [{ rotate }] }}>
+      <MaterialCommunityIcons
+        name={spinning ? "fan" : "fan-off"}
+        size={size}
+        color={color}
+      />
+    </Animated.View>
+  );
+}
+
 function NumberField({
   label,
   value,
@@ -92,6 +135,14 @@ function NumberField({
   );
 }
 
+// Hiển thị vị trí nhiệt độ hiện tại trên thanh từ min→max: x (0..100)
+function temperatureProgress(temp: number | null, min: number, max: number) {
+  if (temp === null) return 0;
+  const range = max - min;
+  if (range <= 0) return 0;
+  return Math.min(100, Math.max(0, ((temp - min) / range) * 100));
+}
+
 export default function DeviceScreen({ navigation, route }: Props) {
   const devices = useDeviceStore((state) => state.devices);
   const selectedId = useDeviceStore((state) => state.selectedId);
@@ -111,8 +162,6 @@ export default function DeviceScreen({ navigation, route }: Props) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ledBusy, setLedBusy] = useState(false);
-  // Trạng thái LED chỉ là "bản sao lệnh gần nhất" phía client: backend chưa lưu trạng thái LED,
-  // nên chỉ đổi nhãn nút sau khi lệnh được gửi thành công xuống thiết bị.
   const [ledStates, setLedStates] = useState<Record<string, boolean>>({});
   const [fanBusy, setFanBusy] = useState(false);
   const [fanStates, setFanStates] = useState<Record<string, boolean>>({});
@@ -127,7 +176,10 @@ export default function DeviceScreen({ navigation, route }: Props) {
     if (selected) setForm(toForm(selected.settings));
   }, [selected]);
 
-  // Nhiệt độ mới nhất để hiển thị quạt có đang tự chạy hay không.
+  useEffect(() => {
+    if (form) setIsFanAuto(form.fan_auto);
+  }, [form]);
+
   useEffect(() => {
     if (!selected) {
       setLatestReading(null);
@@ -231,15 +283,27 @@ export default function DeviceScreen({ navigation, route }: Props) {
 
   const ledOn = selected ? (ledStates[selected.id] ?? false) : false;
 
-  // Nhiệt độ mới nhất + ngưỡng để suy ra quạt có đang tự chạy hay không.
   const latestTemperature = latestReading?.temperature ?? null;
   const temperatureMax = selected?.settings.temperature_max ?? 30;
+  const temperatureMin = selected?.settings.temperature_min ?? 18;
   const fanAutoActive =
     Boolean(selected?.settings.fan_auto) &&
     latestTemperature !== null &&
     latestTemperature > temperatureMax;
   const fanManual = selected ? fanStates[selected.id] : undefined;
   const fanOn = fanManual ?? fanAutoActive;
+  const fanControlledByAuto = fanManual === undefined && fanAutoActive;
+
+  const [isFanAuto, setIsFanAuto] = useState<boolean>(
+    selected?.settings.fan_auto ?? true,
+  );
+
+  const setFanMode = (value: boolean) => {
+    setIsFanAuto(value);
+    setForm((current) =>
+      current ? { ...current, fan_auto: value } : current,
+    );
+  };
 
   const toggleFan = async () => {
     if (!selected || fanBusy) return;
@@ -383,7 +447,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
 
           {selected ? (
             <>
-              <Card style={styles.card}>
+              <Card style={styles.deviceCard}>
                 <View style={styles.deviceHeader}>
                   <View>
                     <Text variant="titleSmall" style={styles.cardTitle}>
@@ -395,30 +459,54 @@ export default function DeviceScreen({ navigation, route }: Props) {
                   </View>
                   <StatusPill online={selected.status === "online"} />
                 </View>
-                <View style={styles.commandRow}>
-                  <Button
-                    mode={ledOn ? "contained" : "contained-tonal"}
-                    icon={ledOn ? "lightbulb-on" : "lightbulb-on-outline"}
-                    compact
-                    loading={ledBusy}
-                    disabled={ledBusy}
-                    accessibilityLabel={ledOn ? "Tắt đèn bàn học" : "Bật đèn bàn học"}
-                    onPress={() => void toggleLed()}
-                  >
-                    {ledOn ? "Tắt đèn" : "Bật đèn"}
-                  </Button>
-                  <Button mode="outlined" icon="bell-ring-outline" compact onPress={() => void beep()}>
-                    Còi
-                  </Button>
+
+                {/* Thanh điều khiển nhanh: Đèn · Quạt · Còi */}
+                <View style={styles.controlsRow}>
+                  <View style={styles.controlItem}>
+                    <Button
+                      mode={ledOn ? "contained" : "contained-tonal"}
+                      icon={ledOn ? "lightbulb-on" : "lightbulb-on-outline"}
+                      compact
+                      loading={ledBusy}
+                      disabled={ledBusy}
+                      accessibilityLabel={ledOn ? "Tắt đèn bàn học" : "Bật đèn bàn học"}
+                      onPress={() => void toggleLed()}
+                    >
+                      {ledOn ? "Tắt đèn" : "Bật đèn"}
+                    </Button>
+                    <Text variant="labelSmall" style={styles.controlState}>
+                      {ledOn ? "Đèn đang bật" : "Đèn đang tắt"}
+                    </Text>
+                  </View>
+                  <View style={styles.controlItem}>
+                    <Button
+                      mode={fanOn ? "contained" : "outlined"}
+                      icon={fanOn ? "fan" : "fan-off"}
+                      compact
+                      loading={fanBusy}
+                      disabled={fanBusy}
+                      accessibilityLabel={fanOn ? "Tắt quạt" : "Bật quạt"}
+                      onPress={() => void toggleFan()}
+                    >
+                      {fanOn ? "Tắt quạt" : "Bật quạt"}
+                    </Button>
+                    <Text variant="labelSmall" style={styles.controlState}>
+                      {fanManual === undefined
+                        ? fanOn
+                          ? "Quạt tự động"
+                          : "Quạt tắt"
+                        : fanOn
+                          ? "Quạt thủ công"
+                          : "Quạt tắt"}
+                    </Text>
+                  </View>
+                  <View style={styles.controlItem}>
+                    <Button mode="outlined" icon="bell-ring-outline" compact onPress={() => void beep()}>
+                      Còi
+                    </Button>
+                  </View>
                 </View>
-                <Text variant="labelSmall" style={styles.ledState}>
-                  {ledOn ? "Đèn bàn học đang bật" : "Đèn bàn học đang tắt"}
-                </Text>
-                {selected.settings.auto_control ? (
-                  <Text variant="labelSmall" style={styles.ledState}>
-                    Chế độ tự động: ESP32 đang tự bật/tắt đèn theo độ sáng của phòng.
-                  </Text>
-                ) : null}
+
                 <Button
                   mode="text"
                   icon="access-point-check"
@@ -429,54 +517,160 @@ export default function DeviceScreen({ navigation, route }: Props) {
                 </Button>
               </Card>
 
-              <Card style={styles.card}>
-                <View style={styles.deviceHeader}>
-                  <View style={styles.fanHeaderText}>
-                    <Text variant="titleSmall" style={styles.cardTitle}>
-                      Quạt làm mát (Relay)
-                    </Text>
-                    <Text variant="bodySmall" style={styles.muted}>
-                      Relay GPIO26 · LED xanh trên Wokwi mô phỏng quạt
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons
-                    name={fanOn ? "fan" : "fan-off"}
-                    size={28}
+              {/* Card Quạt làm mát — chế độ hoạt động */}
+              <Card style={styles.fanCard}>
+                <View style={styles.fanHeader}>
+                  <FanIcon
+                    spinning={fanOn}
+                    size={40}
                     color={fanOn ? palette.primary : palette.muted}
                   />
-                </View>
-                <View style={styles.commandRow}>
-                  <Button
-                    mode={fanOn ? "contained" : "contained-tonal"}
-                    icon={fanOn ? "fan-off" : "fan"}
-                    compact
-                    loading={fanBusy}
-                    disabled={fanBusy}
-                    accessibilityLabel={fanOn ? "Tắt quạt" : "Bật quạt"}
-                    onPress={() => void toggleFan()}
+                  <View style={styles.fanHeaderText}>
+                    <Text variant="titleMedium" style={styles.fanTitle}>
+                      Quạt làm mát (Relay)
+                    </Text>
+                    <Text variant="bodySmall" style={styles.fanSubtitle}>
+                      GPIO26 · LED xanh trên Wokwi mô phỏng quạt
+                    </Text>
+                  </View>
+                  <Text
+                    variant="bodySmall"
+                    style={[
+                      styles.fanStatus,
+                      { color: fanOn ? palette.primary : palette.muted },
+                    ]}
                   >
-                    {fanOn ? "Tắt quạt" : "Bật quạt"}
-                  </Button>
-                  <Text variant="labelSmall" style={styles.fanState}>
-                    {fanManual === undefined
-                      ? fanOn
-                        ? "Đang bật (tự động)"
-                        : "Đang tắt"
-                      : fanOn
-                        ? "Đang bật (thủ công)"
-                        : "Đang tắt (thủ công)"}
+                    {fanOn ? "Đang bật" : "Đang tắt"}
                   </Text>
                 </View>
-                <Text variant="labelSmall" style={styles.ledState}>
-                  {latestTemperature !== null
-                    ? `Nhiệt độ hiện tại ${latestTemperature.toFixed(1)}°C. Tự bật khi > ${temperatureMax}°C, tự tắt khi ≤ ${(temperatureMax - 2).toFixed(0)}°C.`
-                    : `Tự bật khi > ${temperatureMax}°C, tự tắt khi ≤ ${(temperatureMax - 2).toFixed(0)}°C (chưa có dữ liệu nhiệt độ).`}
-                </Text>
-                <Text variant="labelSmall" style={styles.ledState}>
-                  Lệnh bấm tay được ưu tiên 30 phút, sau đó quạt tự động theo nhiệt độ trở lại.
-                </Text>
+
+                {/* Chế độ hoạt động: Tự động / Thủ công */}
+                <View style={styles.modeSection}>
+                  <Text variant="bodySmall" style={styles.modeLabel}>
+                    Chế độ hoạt động
+                  </Text>
+                  <View style={styles.modeToggle}>
+                    <Button
+                      mode={isFanAuto ? "contained" : "text"}
+                      onPress={() => setFanMode(true)}
+                      style={styles.modeButton}
+                    >
+                      Tự động
+                    </Button>
+                    <Button
+                      mode={!isFanAuto ? "contained" : "text"}
+                      onPress={() => setFanMode(false)}
+                      style={styles.modeButton}
+                    >
+                      Thủ công
+                    </Button>
+                  </View>
+                </View>
+
+                {isFanAuto ? (
+                  <>
+                    <View style={styles.infoRow}>
+                      <Text variant="bodyMedium">Tự động theo nhiệt độ</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text variant="bodyMedium">Nhiệt độ bật quạt</Text>
+                      <Text variant="bodyMedium" style={styles.infoValue}>
+                        Trên {temperatureMax}°C
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text variant="bodyMedium">Nhiệt độ tắt quạt</Text>
+                      <Text variant="bodyMedium" style={styles.infoValue}>
+                        {(temperatureMax - 2).toFixed(0)}°C trở xuống
+                      </Text>
+                    </View>
+
+                    {/* Thanh chỉ số nhiệt độ */}
+                    <View style={styles.gaugeContainer}>
+                      <Text variant="labelSmall" style={styles.gaugeLabel}>
+                        Nhiệt độ hiện tại:{" "}
+                        {latestTemperature !== null
+                          ? latestTemperature.toFixed(1) + " °C"
+                          : "—"}
+                      </Text>
+                      <View style={styles.gaugeTrack}>
+                        <View
+                          style={[
+                            styles.gaugeFill,
+                            {
+                              width:
+                                temperatureProgress(
+                                  latestTemperature,
+                                  temperatureMin,
+                                  temperatureMax,
+                                ) + "%",
+                            },
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.gaugeMarker,
+                            {
+                              left:
+                                temperatureProgress(
+                                  latestTemperature,
+                                  temperatureMax - temperatureMin,
+                                  temperatureMax - temperatureMin,
+                                ) + "%",
+                              backgroundColor:
+                                latestTemperature !== null &&
+                                latestTemperature > temperatureMax
+                                  ? palette.warning
+                                  : palette.muted,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.gaugeAxis}>
+                        <Text variant="bodySmall" style={styles.gaugeTick}>
+                          {temperatureMin}°C
+                        </Text>
+                        <Text
+                          variant="bodySmall"
+                          style={[styles.gaugeTick, styles.gaugeTickCenter]}
+                        >
+                          {temperatureMax}°C (bật quạt)
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text variant="bodySmall" style={styles.muted}>
+                      Lệnh tay được ưu tiên 30 phút, sau đó quay về tự động.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      mode={fanOn ? "contained" : "outlined"}
+                      icon={fanOn ? "fan" : "fan-off"}
+                      compact
+                      loading={fanBusy}
+                      disabled={fanBusy}
+                      accessibilityLabel={fanOn ? "Tắt quạt" : "Bật quạt"}
+                      onPress={() => void toggleFan()}
+                    >
+                      {fanOn ? "Tắt quạt" : "Bật quạt"}
+                    </Button>
+                    <Text variant="bodySmall" style={styles.muted}>
+                      {fanManual === undefined
+                        ? "Quạt đang tắt. Nhấn Bật quạt để chạy."
+                        : fanOn
+                          ? "Quạt đang bật thủ công."
+                          : "Quạt đang tắt thủ công."}
+                    </Text>
+                    <Text variant="bodySmall" style={styles.muted}>
+                      Chuyển sang Tự động để quạt chạy theo nhiệt độ.
+                    </Text>
+                  </>
+                )}
               </Card>
 
+              {/* Cài đặt ngưỡng */}
               <SectionTitle title="Ngưỡng cảnh báo & quyền riêng tư" />
               {form ? (
                 <Card>
@@ -567,31 +761,13 @@ export default function DeviceScreen({ navigation, route }: Props) {
                         Tự động bật đèn khi thiếu sáng
                       </Text>
                       <Text variant="bodySmall" style={styles.muted}>
-                        ESP32 tự đọc cảm biến ánh sáng: tối thì bật đèn, đủ sáng thì tắt. Bạn vẫn bật/tắt tay được — lệnh tay được ưu tiên 30 phút.
+                        ESP32 tự đọc cảm biến ánh sáng: tối thì bật đèn, đủ sáng thì tắt. Lệnh tay được ưu tiên 30 phút.
                       </Text>
                     </View>
                     <Switch
                       value={form.auto_control}
                       onValueChange={(value) =>
                         setForm((current) => (current ? { ...current, auto_control: value } : current))
-                      }
-                      color={palette.primary}
-                    />
-                  </View>
-
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchLabel}>
-                      <Text variant="bodyMedium" style={styles.switchTitle}>
-                        Tự động bật quạt khi nhiệt độ cao
-                      </Text>
-                      <Text variant="bodySmall" style={styles.muted}>
-                        ESP32 đọc DHT22: nhiệt độ vượt {form.temperature_max || "30"}°C thì bật relay, giảm 2°C thì tắt để tránh bật/tắt liên tục.
-                      </Text>
-                    </View>
-                    <Switch
-                      value={form.fan_auto}
-                      onValueChange={(value) =>
-                        setForm((current) => (current ? { ...current, fan_auto: value } : current))
                       }
                       color={palette.primary}
                     />
@@ -682,6 +858,8 @@ export default function DeviceScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   registerCard: { marginBottom: spacing.md },
   card: { marginBottom: spacing.md },
+  deviceCard: { marginBottom: spacing.md },
+  fanCard: { marginBottom: spacing.md },
   emptyCard: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
   cardTitle: { color: palette.text, fontWeight: "600" },
   muted: { color: palette.muted, marginTop: 2 },
@@ -690,10 +868,61 @@ const styles = StyleSheet.create({
   chips: { flexGrow: 0, marginBottom: spacing.md },
   chip: { marginRight: spacing.sm },
   deviceHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  commandRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
-  fanHeaderText: { flex: 1, paddingRight: spacing.sm },
-  fanState: { color: palette.muted, alignSelf: "center" },
-  ledState: { color: palette.muted, marginTop: spacing.xs },
+  controlsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  controlItem: { flex: 1, minWidth: 110, alignItems: "center" },
+  controlState: { color: palette.muted, marginTop: spacing.xs, textAlign: "center" },
+  fanHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  fanHeaderText: { flex: 1 },
+  fanTitle: { color: palette.text, fontWeight: "700" },
+  fanSubtitle: { color: palette.muted },
+  gaugeContainer: { marginBottom: spacing.md },
+  gaugeLabel: { color: palette.text, fontWeight: "600", marginBottom: spacing.xs },
+  gaugeTrack: {
+    height: 6,
+    backgroundColor: "#EDF3F1",
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: spacing.xs,
+  },
+  gaugeFill: {
+    height: 6,
+    backgroundColor: palette.primarySoft,
+    borderRadius: 3,
+  },
+  gaugeMarker: {
+    position: "absolute",
+    top: -4,
+    width: 10,
+    height: 14,
+    borderRadius: 2,
+  },
+  gaugeAxis: { flexDirection: "row", justifyContent: "space-between" },
+  gaugeTick: { color: palette.muted, fontSize: 10 },
+  gaugeTickCenter: { textAlign: "center" },
+  autoSwitch: { alignSelf: "center", marginVertical: spacing.sm },
+  fanStatus: { fontWeight: "600", marginLeft: spacing.sm },
+  modeSection: { marginBottom: spacing.md },
+  modeLabel: { color: palette.muted, marginBottom: spacing.xs, fontSize: 12 },
+  modeToggle: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
+  modeButton: { flex: 1, borderRadius: 8 },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.border,
+  },
+  infoValue: { color: palette.text, fontWeight: "600" },
   fieldGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   field: { width: "48%", marginBottom: spacing.sm },
   fieldInput: { backgroundColor: palette.surface },
