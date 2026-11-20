@@ -8,6 +8,10 @@ interface DeviceState {
   selectedId: string | null;
   loading: boolean;
   error: string | null;
+  fanStates: Record<string, boolean>;
+  ledStates: Record<string, boolean>;
+  setFanState: (deviceId: string, on: boolean) => void;
+  setLedState: (deviceId: string, on: boolean) => void;
   refresh: () => Promise<void>;
   select: (deviceId: string) => void;
   register: (deviceCode: string, name: string) => Promise<RegisteredDevice>;
@@ -25,6 +29,16 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   selectedId: null,
   loading: false,
   error: null,
+  fanStates: {},
+  ledStates: {},
+
+  setFanState(deviceId, on) {
+    set((state) => ({ fanStates: { ...state.fanStates, [deviceId]: on } }));
+  },
+
+  setLedState(deviceId, on) {
+    set((state) => ({ ledStates: { ...state.ledStates, [deviceId]: on } }));
+  },
 
   async refresh() {
     set({ loading: true, error: null });

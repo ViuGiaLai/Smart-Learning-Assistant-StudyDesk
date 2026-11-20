@@ -51,6 +51,7 @@ export default function DashboardScreen({ navigation }: Props) {
   const signOut = useAuthStore((state) => state.signOut);
   const devices = useDeviceStore((state) => state.devices);
   const selectedId = useDeviceStore((state) => state.selectedId);
+  const fanStates = useDeviceStore((state) => state.fanStates);
   const refreshDevices = useDeviceStore((state) => state.refresh);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
   const loadNotifications = useNotificationStore((state) => state.load);
@@ -73,6 +74,8 @@ export default function DashboardScreen({ navigation }: Props) {
     Boolean(selectedDevice?.settings.fan_auto) &&
     reading?.temperature != null &&
     reading.temperature > (selectedDevice?.settings.temperature_max ?? 30);
+  const fanManual = selectedId ? fanStates[selectedId] : undefined;
+  const fanOn = fanManual ?? fanAutoActive;
 
   const loadData = useCallback(
     async (options: { isPull?: boolean; force?: boolean } = {}) => {
@@ -331,10 +334,10 @@ export default function DashboardScreen({ navigation }: Props) {
               tone={reading?.motion_detected ? "primary" : "muted"}
             />
             <StatTile
-              icon={fanAutoActive ? "fan" : "fan-off"}
+              icon={fanOn ? "fan" : "fan-off"}
               label="Quạt"
-              value={fanAutoActive ? "Bật" : "Tắt"}
-              tone={fanAutoActive ? "primary" : "muted"}
+              value={fanOn ? "Bật" : "Tắt"}
+              tone={fanOn ? "primary" : "muted"}
             />
           </View>
 

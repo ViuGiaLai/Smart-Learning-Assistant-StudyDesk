@@ -34,7 +34,7 @@
 #define FAN_HYSTERESIS_C 2.0f
 // 0 = relay kich muc CAO (Wokwi module dat transistor "pnp").
 // 1 = relay kich muc THAP (nhieu module relay ngoai thi truong).
-#define FAN_ACTIVE_LOW 0
+#define FAN_ACTIVE_LOW 1
 
 // Sampling: DHT22 needs >= 2 s between reads.
 #define SAMPLE_INTERVAL_MS 10000

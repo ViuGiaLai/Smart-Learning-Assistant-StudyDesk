@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+﻿import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useRef, useState } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";
@@ -149,6 +149,10 @@ export default function DeviceScreen({ navigation, route }: Props) {
   const select = useDeviceStore((state) => state.select);
   const refresh = useDeviceStore((state) => state.refresh);
   const registerDevice = useDeviceStore((state) => state.register);
+  const fanStates = useDeviceStore((state) => state.fanStates);
+  const setFanState = useDeviceStore((state) => state.setFanState);
+  const ledStates = useDeviceStore((state) => state.ledStates);
+  const setLedState = useDeviceStore((state) => state.setLedState);
 
   const selected = devices.find((device) => device.id === selectedId) ?? null;
 
@@ -162,9 +166,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ledBusy, setLedBusy] = useState(false);
-  const [ledStates, setLedStates] = useState<Record<string, boolean>>({});
   const [fanBusy, setFanBusy] = useState(false);
-  const [fanStates, setFanStates] = useState<Record<string, boolean>>({});
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -298,11 +300,22 @@ export default function DeviceScreen({ navigation, route }: Props) {
     selected?.settings.fan_auto ?? true,
   );
 
-  const setFanMode = (value: boolean) => {
+  const setFanMode = async (value: boolean) => {
     setIsFanAuto(value);
     setForm((current) =>
       current ? { ...current, fan_auto: value } : current,
     );
+    if (selected) {
+      if (value) {
+        // Chuyển sang Tự động: xoá trạng thái ghi đè thủ công
+        setFanState(selected.id, fanAutoActive);
+      }
+      try {
+        await api.sendCommand(selected.id, "set_fan_auto", value);
+      } catch {
+        // bỏ qua lỗi gửi lệnh mode
+      }
+    }
   };
 
   const toggleFan = async () => {
@@ -312,7 +325,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
     try {
       const result = await api.sendCommand(selected.id, "set_fan", next);
       if (result.delivered) {
-        setFanStates((current) => ({ ...current, [selected.id]: next }));
+        setFanState(selected.id, next);
         setMessage(next ? "Đã bật quạt." : "Đã tắt quạt.");
       } else {
         setMessage("MQTT chưa kết nối — lệnh chưa được gửi tới thiết bị.");
@@ -331,7 +344,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
     try {
       const result = await api.sendCommand(selected.id, "set_led", next);
       if (result.delivered) {
-        setLedStates((current) => ({ ...current, [selected.id]: next }));
+        setLedState(selected.id, next);
         setMessage(next ? "Đã bật đèn bàn học." : "Đã tắt đèn bàn học.");
       } else {
         setMessage("MQTT chưa kết nối — lệnh chưa được gửi tới thiết bị.");
@@ -527,10 +540,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
                   />
                   <View style={styles.fanHeaderText}>
                     <Text variant="titleMedium" style={styles.fanTitle}>
-                      Quạt làm mát (Relay)
-                    </Text>
-                    <Text variant="bodySmall" style={styles.fanSubtitle}>
-                      GPIO26 · LED xanh trên Wokwi mô phỏng quạt
+                      Quạt làm mát 
                     </Text>
                   </View>
                   <Text

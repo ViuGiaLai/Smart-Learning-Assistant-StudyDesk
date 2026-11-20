@@ -326,6 +326,7 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
     setFan(value);
   } else if (strcmp(action, "set_fan_auto") == 0) {
     fanAuto = value;
+    if (value) fanManualHoldUntil = 0;
   } else if (strcmp(action, "set_buzzer") == 0) {
     setBuzzer(value);
   } else if (strcmp(action, "set_alerts") == 0) {
