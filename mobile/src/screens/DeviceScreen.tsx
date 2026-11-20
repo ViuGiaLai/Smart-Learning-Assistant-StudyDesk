@@ -17,6 +17,7 @@ import type { Device, DeviceSettings, RegisteredDevice, SensorReading } from "..
 import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, KeyValueRow, SectionTitle, StatusPill, Tag } from "../components/ui";
+import { useDeviceStream } from "../hooks/useDeviceStream";
 import type { RootStackParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
@@ -167,6 +168,7 @@ export default function DeviceScreen({ navigation, route }: Props) {
   const [busy, setBusy] = useState(false);
   const [ledBusy, setLedBusy] = useState(false);
   const [fanBusy, setFanBusy] = useState(false);
+  const { latest: liveReading } = useDeviceStream(selectedId);
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -285,7 +287,8 @@ export default function DeviceScreen({ navigation, route }: Props) {
 
   const ledOn = selected ? (ledStates[selected.id] ?? false) : false;
 
-  const latestTemperature = latestReading?.temperature ?? null;
+  const currentReading = liveReading ?? latestReading;
+  const latestTemperature = currentReading?.temperature ?? null;
   const temperatureMax = selected?.settings.temperature_max ?? 30;
   const temperatureMin = selected?.settings.temperature_min ?? 18;
   const fanAutoActive =
