@@ -29,6 +29,7 @@ import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
 import { humidityTone, lightTone, temperatureTone } from "../utils/sensorTone";
+import { parseStudyCommand } from "../utils/studyCommand";
 import { parseVoiceCommands } from "../utils/voiceCommand";
 
 type Props = CompositeScreenProps<
@@ -89,6 +90,7 @@ export default function AssistantScreen({ navigation, route }: Props) {
 
   // ── Voice & Text Unified Dispatcher ────────────────────────────────────
   const speechResetRef = useRef<(() => void) | null>(null);
+  const pendingStudyMinutes = useRef<number>(25);
 
   const send = useCallback(
     async (text: string) => {
@@ -144,6 +146,157 @@ export default function AssistantScreen({ navigation, route }: Props) {
           setMessages((cur) => [
             ...cur,
             { id: nextId(), role: "assistant", text: "❌ Không gửi được lệnh tới thiết bị." },
+          ]);
+        } finally {
+          setSending(false);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+        }
+        return;
+      }
+
+      // 2. Kiểm tra lệnh điều khiển phiên học / đếm ngược Pomodoro
+      const studyCmd = parseStudyCommand(trimmed);
+      if (studyCmd) {
+        try {
+          if (studyCmd.action === "set_duration" && studyCmd.minutes) {
+            pendingStudyMinutes.current = studyCmd.minutes;
+            setMessages((cur) => [
+              ...cur,
+              {
+                id: nextId(),
+                role: "assistant",
+                text: `⏱️ Đã thiết lập thời gian tập trung là ${studyCmd.minutes} phút cho buổi học tiếp theo.\nBạn có muốn bắt đầu ngay bây giờ không? Hãy nói hoặc nhập "Bắt đầu".`,
+                source: "rule_based",
+              },
+            ]);
+          } else if (studyCmd.action === "start") {
+            const minutes = studyCmd.minutes ?? pendingStudyMinutes.current ?? 25;
+            pendingStudyMinutes.current = minutes;
+            // Kiểm tra và hủy phiên cũ nếu có xung đột để tạo phiên mới đúng số phút
+            const active = await api.activeSession().catch(() => null);
+            if (active) {
+              await api.finishSession(active.id, true).catch(() => null);
+            }
+            await api.startSession(minutes);
+            setMessages((cur) => [
+              ...cur,
+              {
+                id: nextId(),
+                role: "assistant",
+                text: `🚀 Bắt đầu đếm ngược ${minutes} phút ngay bây giờ!\nPhiên học đã được tạo trên hệ thống. Khi bạn mở tab "Tập trung", đồng hồ đang chạy ${minutes} phút đếm ngược.`,
+                source: "rule_based",
+              },
+            ]);
+          } else if (studyCmd.action === "pause") {
+            const active = await api.activeSession().catch(() => null);
+            if (active && active.status === "running") {
+              await api.pauseSession(active.id);
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: `⏸️ Đã tạm dừng phiên học ${active.planned_minutes} phút. Khi sẵn sàng, hãy nói "Tiếp tục".`,
+                  source: "rule_based",
+                },
+              ]);
+            } else {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "⚠️ Hiện không có phiên học nào đang chạy để tạm dừng.",
+                  source: "rule_based",
+                },
+              ]);
+            }
+          } else if (studyCmd.action === "resume") {
+            const active = await api.activeSession().catch(() => null);
+            if (active && active.status === "paused") {
+              await api.resumeSession(active.id);
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "▶️ Đã tiếp tục đếm ngược phiên học. Chúc bạn tập trung hiệu quả!",
+                  source: "rule_based",
+                },
+              ]);
+            } else {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "⚠️ Không có phiên học nào đang bị tạm dừng.",
+                  source: "rule_based",
+                },
+              ]);
+            }
+          } else if (studyCmd.action === "finish") {
+            const active = await api.activeSession().catch(() => null);
+            if (active) {
+              const done = await api.finishSession(active.id, false);
+              const focusedMins = Math.max(1, Math.round(done.duration_seconds / 60));
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: `🎉 Đã hoàn thành phiên học! Bạn đã tập trung ${focusedMins} phút. Hãy nghỉ ngơi trước khi học tiếp nhé!`,
+                  source: "rule_based",
+                },
+              ]);
+            } else {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "⚠️ Hiện chưa có phiên học nào đang diễn ra.",
+                  source: "rule_based",
+                },
+              ]);
+            }
+          } else if (studyCmd.action === "query") {
+            const active = await api.activeSession().catch(() => null);
+            if (active) {
+              const totalSec = active.planned_minutes * 60;
+              const remainSec = Math.max(0, totalSec - active.duration_seconds);
+              const m = Math.floor(remainSec / 60);
+              const s = remainSec % 60;
+              const stateText = active.status === "running" ? "đang chạy" : "đang tạm dừng";
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: `⏱️ Phiên học (${stateText}): Còn ${m} phút ${s < 10 ? "0" + s : s} giây / kế hoạch ${active.planned_minutes} phút.`,
+                  source: "rule_based",
+                },
+              ]);
+            } else {
+              setMessages((cur) => [
+                ...cur,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "Hiện không có phiên học nào đang chạy. Bạn có thể nói 'Bắt đầu học 25 phút' để khởi động ngay!",
+                  source: "rule_based",
+                },
+              ]);
+            }
+          }
+        } catch {
+          setMessages((cur) => [
+            ...cur,
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "❌ Có lỗi khi thao tác với phiên học. Vui lòng thử lại.",
+            },
           ]);
         } finally {
           setSending(false);
@@ -342,6 +495,12 @@ export default function AssistantScreen({ navigation, route }: Props) {
             message.text.startsWith("🔕") ||
             message.text.startsWith("⚙️") ||
             message.text.startsWith("📶");
+          const isStudy =
+            message.text.startsWith("⏱️") ||
+            message.text.startsWith("🚀") ||
+            message.text.startsWith("⏸️") ||
+            message.text.startsWith("▶️") ||
+            message.text.startsWith("🎉");
           return (
             <View
               key={message.id}
@@ -355,7 +514,7 @@ export default function AssistantScreen({ navigation, route }: Props) {
                   styles.bubble,
                   isUser
                     ? styles.userBubble
-                    : isCommand
+                    : isCommand || isStudy
                     ? styles.commandBubble
                     : styles.assistantBubble,
                 ]}
@@ -369,7 +528,11 @@ export default function AssistantScreen({ navigation, route }: Props) {
                 )}
                 {!isUser && message.source ? (
                   <Text variant="labelSmall" style={styles.source}>
-                    {isCommand ? "Điều khiển thiết bị" : SOURCE_LABELS[message.source]}
+                    {isStudy
+                      ? "Quản lý phiên học"
+                      : isCommand
+                      ? "Điều khiển thiết bị"
+                      : SOURCE_LABELS[message.source]}
                   </Text>
                 ) : null}
               </View>
