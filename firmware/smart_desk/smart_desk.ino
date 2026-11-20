@@ -3,7 +3,7 @@
 // Board: ESP32 DevKit V1 (Wokwi: board-esp32-devkit-c-v4)
 // Sensors: DHT22 (GPIO4), PIR HC-SR501 (GPIO27), LDR module (GPIO34)
 // Outputs: LED (GPIO2), active buzzer (GPIO25), relay/fan (GPIO26)
-//          LED2 + 220ohm tren Wokwi mo phong quat dang chay.
+// LED2 + 220ohm tren Wokwi mo phong quat dang chay.
 //
 // Data flow: read -> queue -> MQTT smartstudy/<DEVICE_CODE>/telemetry
 // Commands:  MQTT smartstudy/<DEVICE_CODE>/command
@@ -299,7 +299,6 @@ void applyThresholds(JsonObject thresholds) {
   }
   if (!thresholds["fan_auto"].isNull()) {
     fanAuto = thresholds["fan_auto"].as<bool>();
-    // Tắt tự động thì giữ nguyên trạng thái quạt hiện tại cho người dùng tự bật/tắt.
   }
   Serial.printf(
       "[config] temp=[%.1f, %.1f] humidity=[%.0f, %.0f] light_min=%d interval=%lums auto=%d "

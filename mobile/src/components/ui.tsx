@@ -34,12 +34,14 @@ export function Card({ children, style }: { children: ReactNode; style?: object 
 
 export function StatTile({
   icon,
+  customIcon,
   label,
   value,
   unit,
   tone = "primary",
 }: {
-  icon: IconName;
+  icon?: IconName;
+  customIcon?: React.ReactNode;
   label: string;
   value: string;
   unit?: string;
@@ -56,7 +58,7 @@ export function StatTile({
   return (
     <View style={styles.tile}>
       <View style={[styles.tileIcon, { backgroundColor: tones.bg }]}>
-        <MaterialCommunityIcons name={icon} size={18} color={tones.fg} />
+        {customIcon ? customIcon : icon ? <MaterialCommunityIcons name={icon} size={18} color={tones.fg} /> : null}
       </View>
       <Text variant="labelMedium" style={styles.tileLabel} numberOfLines={1}>
         {label}

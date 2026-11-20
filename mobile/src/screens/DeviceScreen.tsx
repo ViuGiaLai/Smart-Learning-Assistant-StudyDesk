@@ -17,6 +17,7 @@ import type { Device, DeviceSettings, RegisteredDevice, SensorReading } from "..
 import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, KeyValueRow, SectionTitle, StatusPill, Tag } from "../components/ui";
+import { FanIcon } from "../components/FanIcon";
 import { useDeviceStream } from "../hooks/useDeviceStream";
 import type { RootStackParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
@@ -58,49 +59,6 @@ function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "Thao tác thất bại";
-}
-
-// Biểu tượng quạt có hiệu ứng quay khi bật, dừng khi tắt.
-function FanIcon({
-  spinning,
-  size = 24,
-  color,
-}: {
-  spinning: boolean;
-  size?: number;
-  color?: string;
-}) {
-  const spinRef = useRef(new Animated.Value(0));
-  const spin = spinRef.current;
-
-  useEffect(() => {
-    if (spinning) {
-      Animated.loop(
-        Animated.timing(spin, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: false,
-        })
-      ).start();
-    } else {
-      spin.setValue(0);
-    }
-  }, [spinning, spin]);
-
-  const rotate = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-
-  return (
-    <Animated.View style={{ transform: [{ rotate }] }}>
-      <MaterialCommunityIcons
-        name={spinning ? "fan" : "fan-off"}
-        size={size}
-        color={color}
-      />
-    </Animated.View>
-  );
 }
 
 function NumberField({

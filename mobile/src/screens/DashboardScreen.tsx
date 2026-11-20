@@ -25,6 +25,7 @@ import type {
 import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, SectionTitle, StatTile, StatusPill } from "../components/ui";
+import { FanIcon } from "../components/FanIcon";
 import { useDeviceStream } from "../hooks/useDeviceStream";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useAuthStore } from "../store/authStore";
@@ -334,7 +335,13 @@ export default function DashboardScreen({ navigation }: Props) {
               tone={reading?.motion_detected ? "primary" : "muted"}
             />
             <StatTile
-              icon={fanOn ? "fan" : "fan-off"}
+              customIcon={
+                <FanIcon
+                  spinning={fanOn}
+                  size={18}
+                  color={fanOn ? palette.primaryDark : palette.muted}
+                />
+              }
               label="Quạt"
               value={fanOn ? "Bật" : "Tắt"}
               tone={fanOn ? "primary" : "muted"}
