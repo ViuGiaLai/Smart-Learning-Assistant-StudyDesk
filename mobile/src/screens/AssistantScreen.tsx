@@ -29,7 +29,7 @@ import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
 import { humidityTone, lightTone, temperatureTone } from "../utils/sensorTone";
-import { parseVoiceCommand } from "../utils/voiceCommand";
+import { parseVoiceCommands } from "../utils/voiceCommand";
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, "Assistant">,
@@ -101,9 +101,9 @@ export default function AssistantScreen({ navigation, route }: Props) {
       setSending(true);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
 
-      // 1. Kiểm tra lệnh điều khiển thiết bị (quạt, đèn, còi)
-      const command = parseVoiceCommand(trimmed);
-      if (command) {
+      // 1. Kiểm tra lệnh điều khiển thiết bị (quạt, đèn, còi, nhiều lệnh cùng lúc)
+      const commands = parseVoiceCommands(trimmed);
+      if (commands.length > 0) {
         const targetDeviceId = selectedId ?? devices[0]?.id;
         if (!targetDeviceId) {
           setMessages((cur) => [
@@ -121,13 +121,20 @@ export default function AssistantScreen({ navigation, route }: Props) {
         }
 
         try {
-          const result = await api.sendCommand(targetDeviceId, command.action, command.value);
-          if (command.action === "set_fan") setFanState(targetDeviceId, command.value);
-          if (command.action === "set_led") setLedState(targetDeviceId, command.value);
+          const feedbacks: string[] = [];
+          for (const cmd of commands) {
+            const result = await api.sendCommand(targetDeviceId, cmd.action, cmd.value);
+            if (cmd.action === "set_fan") setFanState(targetDeviceId, cmd.value);
+            if (cmd.action === "set_led") setLedState(targetDeviceId, cmd.value);
 
-          const replyText = result.delivered
-            ? command.feedback
-            : `${command.feedback}\n⚠️ MQTT chưa kết nối — lệnh chưa đến thiết bị.`;
+            if (result.delivered) {
+              feedbacks.push(cmd.feedback);
+            } else {
+              feedbacks.push(`${cmd.feedback} (⚠️ Chưa gửi được tới ESP32)`);
+            }
+          }
+
+          const replyText = feedbacks.join("\n");
 
           setMessages((cur) => [
             ...cur,
@@ -329,7 +336,12 @@ export default function AssistantScreen({ navigation, route }: Props) {
       >
         {messages.map((message) => {
           const isUser = message.role === "user";
-          const isCommand = message.text.startsWith("✅") || message.text.startsWith("🔔");
+          const isCommand =
+            message.text.startsWith("✅") ||
+            message.text.startsWith("🔔") ||
+            message.text.startsWith("🔕") ||
+            message.text.startsWith("⚙️") ||
+            message.text.startsWith("📶");
           return (
             <View
               key={message.id}
@@ -357,7 +369,7 @@ export default function AssistantScreen({ navigation, route }: Props) {
                 )}
                 {!isUser && message.source ? (
                   <Text variant="labelSmall" style={styles.source}>
-                    {SOURCE_LABELS[message.source]}
+                    {isCommand ? "Điều khiển thiết bị" : SOURCE_LABELS[message.source]}
                   </Text>
                 ) : null}
               </View>
@@ -639,13 +651,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FDE68A",
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: 260,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    maxWidth: 320,
   },
   suggestionCardText: {
     color: "#92400E",
     fontSize: 12,
+    lineHeight: 18,
   },
   pillPressed: {
     opacity: 0.7,
