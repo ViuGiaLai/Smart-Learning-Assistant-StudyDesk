@@ -26,6 +26,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, SectionTitle, StatTile, StatusPill } from "../components/ui";
 import { FanIcon } from "../components/FanIcon";
+import { LightIcon } from "../components/LightIcon";
 import { useDeviceStream } from "../hooks/useDeviceStream";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useAuthStore } from "../store/authStore";
@@ -357,10 +358,16 @@ export default function DashboardScreen({ navigation }: Props) {
               tone={fanOn ? "primary" : "muted"}
             />
             <StatTile
-              icon={ledOn ? "lightbulb-on" : "lightbulb-outline"}
+              customIcon={
+                <LightIcon
+                  on={ledOn}
+                  size={18}
+                  color={ledOn ? "#F59E0B" : palette.muted}
+                />
+              }
               label="Đèn"
               value={ledOn ? "Bật" : "Tắt"}
-              tone={ledOn ? "primary" : "muted"}
+              tone={ledOn ? "accent" : "muted"}
             />
           </View>
 

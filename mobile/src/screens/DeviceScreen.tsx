@@ -18,6 +18,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Screen } from "../components/Screen";
 import { Card, KeyValueRow, SectionTitle, StatusPill, Tag } from "../components/ui";
 import { FanIcon } from "../components/FanIcon";
+import { LightIcon } from "../components/LightIcon";
 import { useDeviceStream } from "../hooks/useDeviceStream";
 import type { RootStackParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
@@ -446,7 +447,13 @@ export default function DeviceScreen({ navigation, route }: Props) {
                   <View style={styles.controlItem}>
                     <Button
                       mode={ledOn ? "contained" : "contained-tonal"}
-                      icon={ledOn ? "lightbulb-on" : "lightbulb-on-outline"}
+                      icon={() => (
+                        <LightIcon
+                          on={ledOn}
+                          size={16}
+                          color={ledOn ? "#FFFBEB" : palette.muted}
+                        />
+                      )}
                       compact
                       loading={ledBusy}
                       disabled={ledBusy}
