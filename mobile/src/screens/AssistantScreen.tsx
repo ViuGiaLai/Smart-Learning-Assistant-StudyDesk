@@ -4,20 +4,32 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
-import { Chip, IconButton, Text, TextInput } from "react-native-paper";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput as RNTextInput,
+  View,
+} from "react-native";
+import { Chip, IconButton, Text } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
 import type { AssistantContext, ChatSource } from "../api/types";
+import { MicButton } from "../components/MicButton";
 import { PageHeader } from "../components/PageHeader";
 import { RichMessageText } from "../components/RichMessageText";
 import { SensorStatusRow, type SensorStatusItem } from "../components/SensorStatusRow";
+import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useTabScrollToTop } from "../hooks/useTabScrollToTop";
 import { Tag } from "../components/ui";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useDeviceStore } from "../store/deviceStore";
 import { palette, spacing } from "../theme";
 import { humidityTone, lightTone, temperatureTone } from "../utils/sensorTone";
+import { parseVoiceCommand } from "../utils/voiceCommand";
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, "Assistant">,
@@ -72,6 +84,112 @@ export default function AssistantScreen({ navigation, route }: Props) {
   const lastContextFetch = useRef<number>(0);
   const devices = useDeviceStore((state) => state.devices);
   const selectedId = useDeviceStore((state) => state.selectedId);
+  const setFanState = useDeviceStore((state) => state.setFanState);
+  const setLedState = useDeviceStore((state) => state.setLedState);
+
+  // ── Voice & Text Unified Dispatcher ────────────────────────────────────
+  const speechResetRef = useRef<(() => void) | null>(null);
+
+  const send = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || sending) return;
+      setError(null);
+      setInput("");
+      const userMessage: ChatMessage = { id: nextId(), role: "user", text: trimmed };
+      setMessages((current) => [...current, userMessage]);
+      setSending(true);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+
+      // 1. Kiểm tra lệnh điều khiển thiết bị (quạt, đèn, còi)
+      const command = parseVoiceCommand(trimmed);
+      if (command) {
+        const targetDeviceId = selectedId ?? devices[0]?.id;
+        if (!targetDeviceId) {
+          setMessages((cur) => [
+            ...cur,
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "⚠️ Bạn chưa đăng ký hoặc kết nối thiết bị bàn học.",
+              source: "rule_based",
+            },
+          ]);
+          setSending(false);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+          return;
+        }
+
+        try {
+          const result = await api.sendCommand(targetDeviceId, command.action, command.value);
+          if (command.action === "set_fan") setFanState(targetDeviceId, command.value);
+          if (command.action === "set_led") setLedState(targetDeviceId, command.value);
+
+          const replyText = result.delivered
+            ? command.feedback
+            : `${command.feedback}\n⚠️ MQTT chưa kết nối — lệnh chưa đến thiết bị.`;
+
+          setMessages((cur) => [
+            ...cur,
+            { id: nextId(), role: "assistant", text: replyText, source: "rule_based" },
+          ]);
+        } catch {
+          setMessages((cur) => [
+            ...cur,
+            { id: nextId(), role: "assistant", text: "❌ Không gửi được lệnh tới thiết bị." },
+          ]);
+        } finally {
+          setSending(false);
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+        }
+        return;
+      }
+
+      // 2. Không phải lệnh IoT → Gửi lên AI Assistant (Groq / Gemini)
+      try {
+        const response = await api.chat(trimmed, conversationId);
+        setConversationId(response.conversation_id);
+        setMessages((current) => [
+          ...current,
+          {
+            id: nextId(),
+            role: "assistant",
+            text: response.answer,
+            source: response.source,
+          },
+        ]);
+        if (response.suggestions.length > 0) {
+          setSuggestions(response.suggestions.slice(0, 4));
+        }
+      } catch (caught) {
+        setError(messageOf(caught));
+      } finally {
+        setSending(false);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+      }
+    },
+    [sending, selectedId, devices, conversationId, setFanState, setLedState],
+  );
+
+  const handleVoiceFinalResult = useCallback(
+    async (spokenText: string) => {
+      speechResetRef.current?.();
+      if (!spokenText.trim()) return;
+      await send(spokenText);
+    },
+    [send],
+  );
+
+  const speechRecog = useSpeechRecognition(handleVoiceFinalResult);
+  speechResetRef.current = speechRecog.reset;
+
+  const handleMicPress = useCallback(() => {
+    if (speechRecog.state === "listening") {
+      speechRecog.stopListening();
+    } else {
+      void speechRecog.startListening();
+    }
+  }, [speechRecog]);
 
   useFocusEffect(
     useCallback(() => {
@@ -123,39 +241,6 @@ export default function AssistantScreen({ navigation, route }: Props) {
     };
   }, [requestedConversationId, navigation]);
 
-  const send = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    setError(null);
-    setInput("");
-    const userMessage: ChatMessage = { id: nextId(), role: "user", text: trimmed };
-    setMessages((current) => [...current, userMessage]);
-    setSending(true);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
-
-    try {
-      const response = await api.chat(trimmed, conversationId);
-      setConversationId(response.conversation_id);
-      setMessages((current) => [
-        ...current,
-        {
-          id: nextId(),
-          role: "assistant",
-          text: response.answer,
-          source: response.source,
-        },
-      ]);
-      if (response.suggestions.length > 0) {
-        setSuggestions(response.suggestions.slice(0, 4));
-      }
-    } catch (caught) {
-      setError(messageOf(caught));
-    } finally {
-      setSending(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    }
-  };
-
   const hasUserMessage = messages.some((message) => message.role === "user");
 
   const resetChat = () => {
@@ -203,34 +288,36 @@ export default function AssistantScreen({ navigation, route }: Props) {
     >
       <PageHeader
         title="Trợ lý học tập"
-        subtitle="AI kết hợp dữ liệu môi trường bàn học"
+        subtitle="AI & điều khiển thiết bị thông minh"
         right={
           <View style={styles.headerActions}>
-            <Tag text="AI" tone="primary" />
+            <View style={styles.aiBadge}>
+              <View style={styles.aiBadgeDot} />
+              <Text variant="labelSmall" style={styles.aiBadgeText}>
+                AI Online
+              </Text>
+            </View>
             <IconButton
               icon="history"
-              size={22}
+              size={20}
               onPress={() => navigation.navigate("AssistantHistory")}
               accessibilityLabel="Lịch sử trò chuyện"
+              style={styles.headerIconBtn}
             />
             <IconButton
               icon="chat-plus-outline"
-              size={22}
+              size={20}
               onPress={resetChat}
               accessibilityLabel="Bắt đầu cuộc trò chuyện mới"
+              style={styles.headerIconBtn}
             />
           </View>
         }
       />
 
       {statusItems.length > 0 ? (
-        <View>
+        <View style={styles.sensorRowWrapper}>
           <SensorStatusRow items={statusItems} />
-          {hasWarning ? (
-            <Text variant="labelSmall" style={styles.sensorLegend}>
-              Xanh: đạt ngưỡng · Xanh dương: thấp · Cam: cần chú ý · Đỏ: cao
-            </Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -240,35 +327,43 @@ export default function AssistantScreen({ navigation, route }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={[
-              styles.bubbleRow,
-              message.role === "user" ? styles.bubbleRowUser : styles.bubbleRowAssistant,
-            ]}
-          >
+        {messages.map((message) => {
+          const isUser = message.role === "user";
+          const isCommand = message.text.startsWith("✅") || message.text.startsWith("🔔");
+          return (
             <View
+              key={message.id}
               style={[
-                styles.bubble,
-                message.role === "user" ? styles.userBubble : styles.assistantBubble,
+                styles.bubbleRow,
+                isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant,
               ]}
             >
-              {message.role === "user" ? (
-                <Text variant="bodyMedium" style={styles.userText}>
-                  {message.text}
-                </Text>
-              ) : (
-                <RichMessageText text={message.text} thresholds={settings} />
-              )}
-              {message.role === "assistant" && message.source ? (
-                <Text variant="labelSmall" style={styles.source}>
-                  {SOURCE_LABELS[message.source]}
-                </Text>
-              ) : null}
+              <View
+                style={[
+                  styles.bubble,
+                  isUser
+                    ? styles.userBubble
+                    : isCommand
+                    ? styles.commandBubble
+                    : styles.assistantBubble,
+                ]}
+              >
+                {isUser ? (
+                  <Text variant="bodyMedium" style={styles.userText}>
+                    {message.text}
+                  </Text>
+                ) : (
+                  <RichMessageText text={message.text} thresholds={settings} />
+                )}
+                {!isUser && message.source ? (
+                  <Text variant="labelSmall" style={styles.source}>
+                    {SOURCE_LABELS[message.source]}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         {sending ? (
           <View style={[styles.bubbleRow, styles.bubbleRowAssistant]}>
@@ -291,38 +386,68 @@ export default function AssistantScreen({ navigation, route }: Props) {
         ) : null}
 
         {hasUserMessage ? null : (
-          <View style={styles.suggestions}>
-            <Text variant="labelMedium" style={styles.suggestionsTitle}>
-              Câu hỏi nhanh
+          <View style={styles.suggestionsContainer}>
+            <Text variant="labelSmall" style={styles.suggestionsHeader}>
+              CÂU HỎI NHANH
             </Text>
-            <View style={styles.chipWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalChipsList}
+            >
               {QUICK_PROMPTS.map((prompt) => (
-                <Chip
+                <Pressable
                   key={prompt}
-                  icon="arrow-right"
                   onPress={() => void send(prompt)}
-                  style={styles.chip}
-                  compact
+                  style={({ pressed }) => [
+                    styles.promptCard,
+                    pressed && styles.pillPressed,
+                  ]}
                 >
-                  {prompt}
-                </Chip>
+                  <MaterialCommunityIcons
+                    name="lightbulb-on-outline"
+                    size={14}
+                    color={palette.primary}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.promptCardText}>{prompt}</Text>
+                </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         )}
 
         {suggestions.length > 0 ? (
-          <View style={styles.suggestions}>
-            <Text variant="labelMedium" style={styles.suggestionsTitle}>
-              Gợi ý cho bạn
+          <View style={styles.suggestionsContainer}>
+            <Text variant="labelSmall" style={styles.suggestionsHeader}>
+              GỢI Ý TỰ ĐỘNG
             </Text>
-            <View style={styles.chipWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalChipsList}
+            >
               {suggestions.map((suggestion) => (
-                <Chip key={suggestion} style={styles.chip} compact>
-                  {suggestion}
-                </Chip>
+                <Pressable
+                  key={suggestion}
+                  onPress={() => void send(suggestion)}
+                  style={({ pressed }) => [
+                    styles.suggestionCard,
+                    pressed && styles.pillPressed,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="creation-outline"
+                    size={14}
+                    color={palette.accent}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.suggestionCardText} numberOfLines={2}>
+                    {suggestion}
+                  </Text>
+                </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         ) : null}
 
@@ -331,28 +456,68 @@ export default function AssistantScreen({ navigation, route }: Props) {
         </Text>
       </ScrollView>
 
-      <View style={styles.composer}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="Hỏi về kế hoạch, kiến thức, môi trường học…"
-          mode="outlined"
-          multiline
-          style={styles.input}
-          outlineColor={palette.border}
-          activeOutlineColor={palette.primary}
-          onSubmitEditing={() => void send(input)}
-          returnKeyType="send"
-        />
-        <IconButton
-          icon="send"
-          mode="contained"
-          size={22}
+      {/* Composer Bar */}
+      <View style={styles.composerWrapper}>
+        <View
+          style={[
+            styles.inputPill,
+            speechRecog.state === "listening" && styles.inputPillListening,
+          ]}
+        >
+          <RNTextInput
+            value={
+              speechRecog.state === "listening"
+                ? speechRecog.transcript || "🎤 Đang lắng nghe bạn..."
+                : input
+            }
+            onChangeText={(v) => {
+              setInput(v);
+              if (speechRecog.state === "listening") speechRecog.stopListening();
+            }}
+            placeholder={
+              speechRecog.state === "listening"
+                ? "Nói câu lệnh hoặc câu hỏi..."
+                : "Nói hoặc nhập điều bạn muốn..."
+            }
+            placeholderTextColor={palette.muted}
+            multiline
+            editable={speechRecog.state !== "listening"}
+            style={[
+              styles.nativeInput,
+              speechRecog.state === "listening" && styles.nativeInputListening,
+            ]}
+            onSubmitEditing={() => void send(input)}
+          />
+          <MicButton
+            state={speechRecog.state}
+            onPress={handleMicPress}
+            disabled={sending}
+          />
+        </View>
+
+        <Pressable
           onPress={() => void send(input)}
-          disabled={sending || input.trim().length === 0}
+          disabled={sending || input.trim().length === 0 || speechRecog.state !== "idle"}
+          style={({ pressed }) => [
+            styles.sendCircle,
+            sending || input.trim().length === 0 || speechRecog.state !== "idle"
+              ? styles.sendCircleDisabled
+              : styles.sendCircleActive,
+            pressed && { opacity: 0.8 },
+          ]}
           accessibilityLabel="Gửi tin nhắn"
-          style={styles.sendButton}
-        />
+        >
+          {sending ? (
+            <ActivityIndicator size={18} color="#FFFFFF" />
+          ) : (
+            <MaterialCommunityIcons
+              name="send"
+              size={18}
+              color="#FFFFFF"
+              style={{ marginLeft: 2 }}
+            />
+          )}
+        </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
@@ -360,27 +525,64 @@ export default function AssistantScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.background },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  sensorLegend: {
-    color: palette.muted,
-    fontSize: 10,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+  headerIconBtn: { margin: 0 },
+  aiBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 5,
   },
-  messages: { padding: spacing.lg, paddingBottom: spacing.md, gap: spacing.md },
+  aiBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: palette.success,
+  },
+  aiBadgeText: {
+    color: "#166534",
+    fontWeight: "700",
+    fontSize: 11,
+  },
+  sensorRowWrapper: {
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  messages: { padding: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
   bubbleRow: { flexDirection: "row" },
   bubbleRowUser: { justifyContent: "flex-end" },
   bubbleRowAssistant: { justifyContent: "flex-start" },
-  bubble: { maxWidth: "86%", borderRadius: 16, padding: spacing.md },
-  userBubble: { backgroundColor: palette.primary, borderBottomRightRadius: 4 },
+  bubble: {
+    maxWidth: "85%",
+    borderRadius: 18,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  userBubble: {
+    backgroundColor: palette.primary,
+    borderBottomRightRadius: 4,
+  },
   assistantBubble: {
     backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: "#E2E8F0",
+    borderBottomLeftRadius: 4,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  commandBubble: {
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
     borderBottomLeftRadius: 4,
   },
-  userText: { color: "#FFFFFF", lineHeight: 21 },
-  assistantText: { color: palette.text, lineHeight: 21 },
+  userText: { color: "#FFFFFF", lineHeight: 21, fontSize: 15 },
   source: { color: palette.muted, marginTop: spacing.xs, fontSize: 10 },
   typing: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   errorBox: {
@@ -392,21 +594,117 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { color: palette.danger, flex: 1 },
-  suggestions: { gap: spacing.sm, marginTop: spacing.sm },
-  suggestionsTitle: { color: palette.muted },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { maxWidth: "100%" },
-  disclaimer: { color: palette.muted, marginTop: spacing.md, lineHeight: 17 },
-  composer: {
+  suggestionsContainer: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  suggestionsHeader: {
+    color: palette.muted,
+    fontWeight: "700",
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+    marginLeft: spacing.xs,
+  },
+  horizontalChipsList: {
     flexDirection: "row",
-    alignItems: "flex-end",
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  promptCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  promptCardText: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  suggestionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    maxWidth: 260,
+  },
+  suggestionCardText: {
+    color: "#92400E",
+    fontSize: 12,
+  },
+  pillPressed: {
+    opacity: 0.7,
+  },
+  disclaimer: {
+    color: palette.muted,
+    marginTop: spacing.sm,
+    textAlign: "center",
+    fontSize: 11,
+  },
+  composerWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: palette.border,
+    borderTopColor: "#E2E8F0",
     backgroundColor: palette.surface,
   },
-  input: { flex: 1, maxHeight: 120, backgroundColor: palette.surface },
-  sendButton: { marginBottom: 2, backgroundColor: palette.primary },
+  inputPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 24,
+    paddingLeft: spacing.md,
+    paddingRight: 6,
+    minHeight: 46,
+  },
+  inputPillListening: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#EF4444",
+  },
+  nativeInput: {
+    flex: 1,
+    fontSize: 15,
+    color: palette.text,
+    paddingVertical: 8,
+    maxHeight: 100,
+  },
+  nativeInputListening: {
+    color: "#DC2626",
+    fontWeight: "500",
+  },
+  sendCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 2,
+  },
+  sendCircleActive: {
+    backgroundColor: palette.primary,
+  },
+  sendCircleDisabled: {
+    backgroundColor: "#CBD5E1",
+  },
 });

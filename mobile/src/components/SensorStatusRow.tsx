@@ -32,9 +32,6 @@ export function SensorStatusRow({ items }: { items: SensorStatusItem[] }) {
             size={14}
             color={toneColor(item.tone)}
           />
-          <Text variant="labelSmall" style={styles.label} numberOfLines={1}>
-            {item.label}
-          </Text>
           <Text
             variant="labelMedium"
             style={[styles.value, { color: toneColor(item.tone) }]}
@@ -51,7 +48,7 @@ export function SensorStatusRow({ items }: { items: SensorStatusItem[] }) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
@@ -60,11 +57,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    borderRadius: 999,
+    gap: 6,
+    borderRadius: 20,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
-  label: { color: palette.muted },
-  value: { fontWeight: "700" },
+  value: { fontWeight: "700", fontSize: 13 },
 });
