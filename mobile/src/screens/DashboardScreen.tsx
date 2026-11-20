@@ -53,6 +53,7 @@ export default function DashboardScreen({ navigation }: Props) {
   const devices = useDeviceStore((state) => state.devices);
   const selectedId = useDeviceStore((state) => state.selectedId);
   const fanStates = useDeviceStore((state) => state.fanStates);
+  const ledStates = useDeviceStore((state) => state.ledStates);
   const refreshDevices = useDeviceStore((state) => state.refresh);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
   const loadNotifications = useNotificationStore((state) => state.load);
@@ -71,12 +72,21 @@ export default function DashboardScreen({ navigation }: Props) {
   const { latest: liveReading, status: liveStatus } = useDeviceStream(selectedId);
   const reading = liveReading ?? latest;
   const online = liveStatus ? liveStatus === "online" : selectedDevice?.status === "online";
+
+  const lightMinLux = selectedDevice?.settings.light_min_lux ?? 150;
+  const ledAutoActive =
+    Boolean(selectedDevice?.settings.auto_control) &&
+    reading?.light_lux != null &&
+    reading.light_lux < lightMinLux;
+  const ledManual = selectedId ? ledStates[selectedId] : undefined;
+  const ledOn = (reading?.led_on !== undefined ? reading.led_on : ledManual) ?? ledAutoActive;
+
   const fanAutoActive =
     Boolean(selectedDevice?.settings.fan_auto) &&
     reading?.temperature != null &&
     reading.temperature > (selectedDevice?.settings.temperature_max ?? 30);
   const fanManual = selectedId ? fanStates[selectedId] : undefined;
-  const fanOn = fanManual ?? fanAutoActive;
+  const fanOn = (reading?.fan_on !== undefined ? reading.fan_on : fanManual) ?? fanAutoActive;
 
   const loadData = useCallback(
     async (options: { isPull?: boolean; force?: boolean } = {}) => {
@@ -345,6 +355,12 @@ export default function DashboardScreen({ navigation }: Props) {
               label="Quạt"
               value={fanOn ? "Bật" : "Tắt"}
               tone={fanOn ? "primary" : "muted"}
+            />
+            <StatTile
+              icon={ledOn ? "lightbulb-on" : "lightbulb-outline"}
+              label="Đèn"
+              value={ledOn ? "Bật" : "Tắt"}
+              tone={ledOn ? "primary" : "muted"}
             />
           </View>
 

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { WS_URL } from "../api/config";
 import { session } from "../api/session";
 import type { Alert, SensorReading, StreamEvent } from "../api/types";
+import { useDeviceStore } from "../store/deviceStore";
 
 interface StreamState {
   latest: SensorReading | null;
@@ -48,10 +49,24 @@ export function useDeviceStream(deviceId: string | null): StreamState {
           const payload = JSON.parse(String(event.data)) as StreamEvent;
           if (payload.event === "snapshot") {
             setStatus(payload.data.status);
-            if (payload.data.latest_reading) setLatest(payload.data.latest_reading);
+            if (payload.data.latest_reading) {
+              setLatest(payload.data.latest_reading);
+              if (typeof payload.data.latest_reading.fan_on === "boolean") {
+                useDeviceStore.getState().setFanState(deviceId, payload.data.latest_reading.fan_on);
+              }
+              if (typeof payload.data.latest_reading.led_on === "boolean") {
+                useDeviceStore.getState().setLedState(deviceId, payload.data.latest_reading.led_on);
+              }
+            }
           } else if (payload.event === "telemetry") {
             setStatus("online");
             setLatest(payload.data);
+            if (typeof payload.data.fan_on === "boolean") {
+              useDeviceStore.getState().setFanState(deviceId, payload.data.fan_on);
+            }
+            if (typeof payload.data.led_on === "boolean") {
+              useDeviceStore.getState().setLedState(deviceId, payload.data.led_on);
+            }
           } else if (payload.event === "alert") {
             setAlerts((current) => [payload.data, ...current].slice(0, 5));
           } else if (payload.event === "device_status") {

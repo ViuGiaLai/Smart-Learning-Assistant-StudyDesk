@@ -70,6 +70,8 @@ export interface SensorReading {
   light_raw: number | null;
   light_lux: number | null;
   motion_detected: boolean;
+  fan_on?: boolean;
+  led_on?: boolean;
   recorded_at: string;
   received_at: string;
 }

@@ -107,6 +107,8 @@ class SensorReadingOut(BaseModel):
     light_raw: int | None
     light_lux: float | None
     motion_detected: bool
+    fan_on: bool | None = None
+    led_on: bool | None = None
     recorded_at: UTCDateTime
     received_at: UTCDateTime
 
@@ -133,6 +135,8 @@ class TelemetryIn(BaseModel):
     )
     light_lux: float | None = Field(default=None, ge=0, le=100_000)
     motion_detected: bool = False
+    fan_on: bool | None = None
+    led_on: bool | None = None
     timestamp: datetime | None = Field(
         default=None, description="Device time (ISO-8601). Server time is authoritative."
     )

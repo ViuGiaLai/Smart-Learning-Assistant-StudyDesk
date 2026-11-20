@@ -135,13 +135,19 @@ async def ingest_telemetry(
     if was_offline:
         await broadcast_status(device)
 
+    reading_data = serialize_reading(reading)
+    if payload.fan_on is not None:
+        reading_data["fan_on"] = payload.fan_on
+    if payload.led_on is not None:
+        reading_data["led_on"] = payload.led_on
+
     await manager.broadcast(
         device.id,
         {
             "event": "telemetry",
             "device_id": device.id,
             "source": source,
-            "data": serialize_reading(reading),
+            "data": reading_data,
             "alerts": created_alerts,
         },
     )

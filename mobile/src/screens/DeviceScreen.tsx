@@ -243,18 +243,25 @@ export default function DeviceScreen({ navigation, route }: Props) {
     }, 800);
   };
 
-  const ledOn = selected ? (ledStates[selected.id] ?? false) : false;
-
   const currentReading = liveReading ?? latestReading;
   const latestTemperature = currentReading?.temperature ?? null;
+  const latestLux = currentReading?.light_lux ?? null;
   const temperatureMax = selected?.settings.temperature_max ?? 30;
   const temperatureMin = selected?.settings.temperature_min ?? 18;
+  const lightMinLux = selected?.settings.light_min_lux ?? 150;
+
+  const ledAutoActive =
+    Boolean(selected?.settings.auto_control) &&
+    latestLux !== null &&
+    latestLux < lightMinLux;
+  const ledManual = selected ? ledStates[selected.id] : undefined;
+  const ledOn = (currentReading?.led_on !== undefined ? currentReading.led_on : ledManual) ?? ledAutoActive;
   const fanAutoActive =
     Boolean(selected?.settings.fan_auto) &&
     latestTemperature !== null &&
     latestTemperature > temperatureMax;
   const fanManual = selected ? fanStates[selected.id] : undefined;
-  const fanOn = fanManual ?? fanAutoActive;
+  const fanOn = (currentReading?.fan_on !== undefined ? currentReading.fan_on : fanManual) ?? fanAutoActive;
   const fanControlledByAuto = fanManual === undefined && fanAutoActive;
 
   const [isFanAuto, setIsFanAuto] = useState<boolean>(

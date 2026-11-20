@@ -214,6 +214,7 @@ bool publishReading(const PendingReading &reading) {
   doc["motion_detected"] = reading.motion;
   doc["fan_on"] = fanState;
   doc["fan_auto"] = fanAuto;
+  doc["led_on"] = ledState;
   String timestamp = isoUtc(reading.recordedEpoch);
   if (timestamp.length() > 0) doc["timestamp"] = timestamp;
 
@@ -248,6 +249,7 @@ bool postReadingHttp(const PendingReading &reading) {
   doc["motion_detected"] = reading.motion;
   doc["fan_on"] = fanState;
   doc["fan_auto"] = fanAuto;
+  doc["led_on"] = ledState;
   String timestamp = isoUtc(reading.recordedEpoch);
   if (timestamp.length() > 0) doc["timestamp"] = timestamp;
 
