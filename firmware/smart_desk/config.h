@@ -5,8 +5,8 @@
 #pragma once
 
 // Wi-Fi (Wokwi uses this guest network)
-#define WIFI_SSID "Wokwi-GUEST"
-#define WIFI_PASSWORD ""
+#define WIFI_SSID "KYNA T2"
+#define WIFI_PASSWORD "kyna2411"
 
 // MQTT broker: Mosquitto rieng chay tren VPS (allow_anonymous false).
 // - Tai khoan phai trung password_file cua broker.
@@ -56,7 +56,7 @@
 // Optional HTTP fallback for networks that block MQTT.
 // Create the device in the app, then paste its key here.
 #define ENABLE_HTTP_FALLBACK 0
-#define API_BASE_URL "http://192.168.1.10:8000"
+#define API_BASE_URL "https://smartstudy.viuphuthien.id.vn"
 #define DEVICE_KEY "sk_replace_me"
 
 // LAB3: send a separate alert to FastAPI when a threshold is crossed.
