@@ -2,7 +2,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Alert, Platform, StyleSheet, View } from "react-native";
 import { Button, Chip, Dialog, Portal, ProgressBar, Text, TextInput } from "react-native-paper";
 
 import { ApiError, api } from "../api/client";
@@ -93,6 +93,19 @@ export default function FocusScreen(_props: Props) {
     }
   }, [mode, breakRemaining]);
 
+  const stopDeskAlarm = useCallback(async () => {
+    try {
+      const devices = await api.devices();
+      const online = devices.filter((d) => d.status === "online");
+      const target = online[0] ?? devices[0];
+      if (target) {
+        await api.sendCommand(target.id, "set_buzzer", false);
+      }
+    } catch {
+      // Best-effort tắt còi trên bàn học
+    }
+  }, []);
+
   const finish = useCallback(
     async (cancelled: boolean, auto: boolean) => {
       if (!session) return;
@@ -107,15 +120,46 @@ export default function FocusScreen(_props: Props) {
         if (auto && !cancelled) {
           setMode("break");
           setBreakRemaining(BREAK_SECONDS);
-          showMessage(
-            "Hoàn thành phiên học!",
-            `Bạn đã tập trung ${formatDuration(done.duration_seconds)}. Nghỉ 5 phút trước khi tiếp tục.`,
-          );
+          if (Platform.OS === "web") {
+            // eslint-disable-next-line no-alert
+            window.alert(
+              `🎉 Hoàn thành phiên học!\n\nBạn đã tập trung ${formatDuration(done.duration_seconds)}. Nghỉ 5 phút trước khi tiếp tục nhé!`,
+            );
+            void stopDeskAlarm();
+          } else {
+            Alert.alert(
+              "🎉 Hoàn thành phiên học!",
+              `Bạn đã tập trung ${formatDuration(done.duration_seconds)}. Nghỉ 5 phút trước khi tiếp tục nhé!`,
+              [
+                {
+                  text: "OK - Tắt chuông",
+                  onPress: () => void stopDeskAlarm(),
+                },
+              ],
+              { cancelable: true, onDismiss: () => void stopDeskAlarm() },
+            );
+          }
         } else if (cancelled) {
           setMode("focus");
         } else {
           setMode("focus");
-          showMessage("Đã kết thúc", `Thời gian tập trung: ${formatDuration(done.duration_seconds)}.`);
+          if (Platform.OS === "web") {
+            // eslint-disable-next-line no-alert
+            window.alert(`Đã kết thúc!\n\nThời gian tập trung: ${formatDuration(done.duration_seconds)}.`);
+            void stopDeskAlarm();
+          } else {
+            Alert.alert(
+              "Đã kết thúc",
+              `Thời gian tập trung: ${formatDuration(done.duration_seconds)}.`,
+              [
+                {
+                  text: "OK",
+                  onPress: () => void stopDeskAlarm(),
+                },
+              ],
+              { cancelable: true, onDismiss: () => void stopDeskAlarm() },
+            );
+          }
         }
       } catch (caught) {
         setError(messageOf(caught));
@@ -123,7 +167,7 @@ export default function FocusScreen(_props: Props) {
         setBusy(false);
       }
     },
-    [selectedMinutes, session],
+    [selectedMinutes, session, stopDeskAlarm],
   );
 
   useEffect(() => {

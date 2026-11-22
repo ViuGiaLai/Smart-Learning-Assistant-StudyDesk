@@ -25,7 +25,7 @@ from app.services.stats import get_study_stats, session_duration_seconds
 
 router = APIRouter(tags=["Study"])
 
-BUZZER_ON_SECONDS = 1.5
+BUZZER_ON_SECONDS = 8.0
 COMPLETE_GRACE_SECONDS = 5
 
 

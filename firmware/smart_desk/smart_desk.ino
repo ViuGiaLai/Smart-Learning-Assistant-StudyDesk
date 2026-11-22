@@ -121,9 +121,40 @@ void setLed(bool value) {
   digitalWrite(LED_PIN, value ? HIGH : LOW);
 }
 
+// ---------------------------------------------------------------------------
+// Alarm / Hết giờ tập trung: Đồng bộ nhấp nháy LED + Còi kêu bíp bíp
+// ---------------------------------------------------------------------------
+bool alarmActive = false;
+uint32_t alarmUntil = 0;
+uint32_t alarmStartedAt = 0;
+uint32_t lastAlarmBlinkAt = 0;
+bool alarmPulseState = false;
+
+void triggerAlarm(uint32_t durationMs = 8000) {
+  alarmActive = true;
+  alarmStartedAt = millis();
+  alarmUntil = millis() + durationMs;
+  lastAlarmBlinkAt = millis();
+  alarmPulseState = true;
+  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
+  buzzerState = true;
+  Serial.println("[alarm] Het gio tap trung: Den nhap nhay + Coi bip bip (tu tat sau 8s hoac khi bam OK tren App)!");
+}
+
+void stopAlarm() {
+  alarmActive = false;
+  alarmPulseState = false;
+  digitalWrite(BUZZER_PIN, LOW);
+  buzzerState = false;
+  setLed(ledState); // Tra lai trang thai den ban dau
+  Serial.println("[alarm] Ket thuc bao het gio - Coi va den da tat");
+}
+
 // Điều khiển đèn theo ánh sáng đo được: tối thì bật, đủ sáng thì tắt.
-// Bỏ qua khi người dùng đang giữ quyền điều khiển tay.
+// Bỏ qua khi người dùng đang giữ quyền điều khiển tay hoặc đang báo hết giờ.
 void applyAutoLed(float lux) {
+  if (alarmActive) return; // Không can thiệp khi đang nhấp nháy báo hết giờ
   if (!autoControl) return;
   if (millis() < manualHoldUntil) return;
   if (lux < (float)lightMinLux) {
@@ -142,10 +173,11 @@ void applyAutoLed(float lux) {
 
 void setBuzzer(bool value) {
   buzzerState = value;
+  pinMode(BUZZER_PIN, OUTPUT);
   if (value) {
-    tone(BUZZER_PIN, BUZZER_FREQUENCY);
+    triggerAlarm(8000);
   } else {
-    noTone(BUZZER_PIN);
+    stopAlarm();
   }
 }
 
@@ -329,7 +361,20 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
     fanAuto = value;
     if (value) fanManualHoldUntil = 0;
   } else if (strcmp(action, "set_buzzer") == 0) {
-    setBuzzer(value);
+    if (value) {
+      // Khi het gio tap trung (server gui lenh coi) -> Nhay den LED + Keu coi trong 8s!
+      triggerAlarm(8000);
+    } else {
+      // Bấm OK trên app hoặc gửi lệnh tắt: Nếu vừa kích hoạt < 2.5s thì bỏ qua lệnh tắt sớm 1.5s của VPS,
+      // chỉ nhận lệnh tắt từ người dùng bấm OK hoặc sau 2.5s.
+      if (!alarmActive || (millis() - alarmStartedAt >= 2500)) {
+        stopAlarm();
+      } else {
+        Serial.println("[alarm] Bo qua auto-off 1.5s cua VPS, giu coi den 8s hoac cho den khi nguoi dung bam OK!");
+      }
+    }
+  } else if (strcmp(action, "alarm") == 0 || strcmp(action, "study_done") == 0) {
+    triggerAlarm(8000);
   } else if (strcmp(action, "set_alerts") == 0) {
     alertsEnabled = value;
   } else if (strcmp(action, "set_thresholds") == 0) {
@@ -493,16 +538,6 @@ void sampleAndPublish() {
     maybeSendAlertHttp(reading);
   }
 #endif
-
-  // Còi nhắc khi phòng quá nóng và mất kết nối backend (đèn đã do applyAutoLed lo).
-  if (alertsEnabled && !mqtt.connected()) {
-    bool tooHot = !isnan(temperature) && temperature > temperatureMax;
-    if (tooHot) {
-      setBuzzer(true);
-    } else {
-      setBuzzer(false);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -518,8 +553,11 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(FAN_PIN, OUTPUT);
+
+  // Mặc định tắt hoàn toàn khi khởi động
+  digitalWrite(BUZZER_PIN, LOW);
   setLed(false);
-  setBuzzer(false);
+  stopAlarm();
   setFan(false);
 
   dht.begin();
@@ -540,6 +578,19 @@ void loop() {
     connectMqtt();
   }
   mqtt.loop();
+
+  // Khi hết giờ tập trung: Nhấp nháy đồng bộ cả ĐÈN LED và CÒI (150ms kêu/sáng, 150ms tắt)
+  if (alarmActive) {
+    uint32_t now = millis();
+    if (now >= alarmUntil) {
+      stopAlarm();
+    } else if (now - lastAlarmBlinkAt >= 150) {
+      lastAlarmBlinkAt = now;
+      alarmPulseState = !alarmPulseState;
+      digitalWrite(LED_PIN, alarmPulseState ? HIGH : LOW);
+      digitalWrite(BUZZER_PIN, alarmPulseState ? HIGH : LOW);
+    }
+  }
 
   if (millis() - lastSampleAt >= sampleIntervalMs) {
     lastSampleAt = millis();
