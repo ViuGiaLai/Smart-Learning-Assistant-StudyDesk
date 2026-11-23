@@ -70,30 +70,7 @@ export default function FocusScreen(_props: Props) {
     }, [loadActive]),
   );
 
-  useEffect(() => {
-    if (mode !== "focus" || session?.status !== "running") return;
-    const timer = setInterval(() => {
-      setRemaining((value) => Math.max(0, value - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [mode, session?.status]);
-
-  useEffect(() => {
-    if (mode !== "break") return;
-    const timer = setInterval(() => {
-      setBreakRemaining((value) => Math.max(0, value - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode === "break" && breakRemaining === 0) {
-      setBreakRemaining(BREAK_SECONDS);
-      void sendDeskStudyCommand("study_stop"); // OLED về STANDBY khi hết nghỉ
-      showMessage("Hết giờ nghỉ", "Quay lại bàn học khi bạn đã sẵn sàng nhé!");
-    }
-  }, [mode, breakRemaining, sendDeskStudyCommand]);
-
+  // ── Desk helpers (best-effort MQTT, không throw) ─────────────────────────
   const sendDeskStudyCommand = useCallback(async (action: string, value?: number) => {
     try {
       const devices = await api.devices();
@@ -119,6 +96,31 @@ export default function FocusScreen(_props: Props) {
       // Best-effort tắt còi trên bàn học
     }
   }, []);
+
+  // ── Timers ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (mode !== "focus" || session?.status !== "running") return;
+    const timer = setInterval(() => {
+      setRemaining((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [mode, session?.status]);
+
+  useEffect(() => {
+    if (mode !== "break") return;
+    const timer = setInterval(() => {
+      setBreakRemaining((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "break" && breakRemaining === 0) {
+      setBreakRemaining(BREAK_SECONDS);
+      void sendDeskStudyCommand("study_stop"); // OLED về STANDBY khi hết nghỉ
+      showMessage("Hết giờ nghỉ", "Quay lại bàn học khi bạn đã sẵn sàng nhé!");
+    }
+  }, [mode, breakRemaining, sendDeskStudyCommand]);
 
   const finish = useCallback(
     async (cancelled: boolean, auto: boolean) => {
