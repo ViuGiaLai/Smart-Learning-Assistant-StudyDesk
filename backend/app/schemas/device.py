@@ -80,13 +80,15 @@ class DeviceStatusOut(BaseModel):
 
 
 CommandAction = Literal[
-    "set_led", "set_fan", "set_fan_auto", "set_buzzer", "set_alerts", "set_thresholds", "ping"
+    "set_led", "set_fan", "set_fan_auto", "set_buzzer", "set_alerts", "set_thresholds", "ping",
+    "study_start", "study_stop", "study_break", "study_done", "alarm",
+    "ai_listen", "ai_think", "ai_done",
 ]
 
 
 class CommandRequest(BaseModel):
     action: CommandAction
-    value: StrictBool | dict[str, Any] | None = None
+    value: StrictBool | int | dict[str, Any] | None = None
 
 
 class CommandResponse(BaseModel):

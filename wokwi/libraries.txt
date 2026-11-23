@@ -1,3 +1,5 @@
 DHT sensor library
 PubSubClient
 ArduinoJson
+Adafruit SSD1306
+Adafruit GFX Library

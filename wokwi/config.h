@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 #pragma once
 
-// Wi-Fi (Wokwi uses this guest network)
+// Wi-Fi (Wokwi uses this virtual guest network - KHONG DOI khi chay mo phong tren Wokwi)
 #define WIFI_SSID "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
 
@@ -36,6 +36,13 @@
 // 1 = relay kich muc THAP (nhieu module relay ngoai thi truong).
 #define FAN_ACTIVE_LOW 1
 
+// OLED SSD1306 128x64 I2C
+#define OLED_SDA      21
+#define OLED_SCL      22
+#define OLED_ADDR     0x3C
+#define SCREEN_WIDTH  128
+#define SCREEN_HEIGHT 64
+
 // Sampling: DHT22 needs >= 2 s between reads.
 #define SAMPLE_INTERVAL_MS 10000
 #define PIR_WARMUP_MS 60000
@@ -50,16 +57,16 @@
 // LDR module polarity (AO pin):
 //   0 = voltage rises with light  -> common KY-018 / LM393 module
 //   1 = voltage falls with light  -> Wokwi's wokwi-photoresistor-sensor
-// Wokwi's module model is inverted, so the simulation uses 1.
+// If your real module reports "dark" in a bright room, flip this value.
 #define LDR_INVERTED 1
 
 // Optional HTTP fallback for networks that block MQTT.
 // Create the device in the app, then paste its key here.
 #define ENABLE_HTTP_FALLBACK 0
-#define API_BASE_URL "http://192.168.1.10:8000"
+#define API_BASE_URL "https://smartstudy.viuphuthien.id.vn"
 #define DEVICE_KEY "sk_replace_me"
 
-// LAB3: Wokwi demo sends HTTP alerts to FastAPI.
-// Replace API_BASE_URL with your public VPS/ngrok URL before running.
-#define ENABLE_HTTP_ALERTS 1
+// LAB3: send a separate alert to FastAPI when a threshold is crossed.
+// Keep this off for a real desk until API_BASE_URL and DEVICE_KEY are set.
+#define ENABLE_HTTP_ALERTS 0
 #define HTTP_ALERT_COOLDOWN_MS 60000UL

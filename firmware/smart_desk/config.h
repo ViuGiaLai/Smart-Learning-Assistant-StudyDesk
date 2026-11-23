@@ -36,6 +36,13 @@
 // 1 = relay kich muc THAP (nhieu module relay ngoai thi truong).
 #define FAN_ACTIVE_LOW 1
 
+// OLED SSD1306 128x64 I2C
+#define OLED_SDA      21
+#define OLED_SCL      22
+#define OLED_ADDR     0x3C
+#define SCREEN_WIDTH  128
+#define SCREEN_HEIGHT 64
+
 // Sampling: DHT22 needs >= 2 s between reads.
 #define SAMPLE_INTERVAL_MS 10000
 #define PIR_WARMUP_MS 60000

@@ -29,11 +29,8 @@ BUZZER_ON_SECONDS = 8.0
 COMPLETE_GRACE_SECONDS = 5
 
 
-async def _ring_buzzer(db, user_id: str) -> None:
-    """Báo hết giờ bằng còi trên bàn học: bật 1 giây rồi tắt.
-
-    Chỉ là nỗ lực tối đa: thiết bị offline hoặc broker mất kết nối thì bỏ qua.
-    """
+async def _ring_buzzer(db, user_id: str, planned_minutes: int = 25) -> None:
+    """Báo hết giờ bằng còi trên bàn học và hiển thị hoàn thành lên OLED."""
     devices = list(
         (await db.execute(select(Device).where(Device.user_id == user_id))).scalars()
     )
@@ -43,7 +40,11 @@ async def _ring_buzzer(db, user_id: str) -> None:
     pool = online or devices
     device = max(pool, key=lambda d: d.last_seen_at or d.created_at)
     code = device.device_code
-    if not await mqtt_service.send_command(code, {"action": "set_buzzer", "value": True}):
+    if not await mqtt_service.send_command(code, {
+        "action": "study_done",
+        "value": planned_minutes,
+        "planned_minutes": planned_minutes,
+    }):
         return
 
     async def _off() -> None:
@@ -95,6 +96,20 @@ async def start_session(
     db.add(session)
     await db.commit()
     await db.refresh(session)
+
+    # Gửi MQTT → OLED chuyển sang màn Focus + đếm ngược
+    devices = list(
+        (await db.execute(select(Device).where(Device.user_id == user.id))).scalars()
+    )
+    if devices:
+        online = [d for d in devices if d.status == "online"]
+        target = max(online or devices, key=lambda d: d.last_seen_at or d.created_at)
+        await mqtt_service.send_command(target.device_code, {
+            "action": "study_start",
+            "value": payload.planned_minutes * 60,
+            "planned_minutes": payload.planned_minutes,
+        })
+
     return _session_out(session)
 
 
@@ -196,7 +211,16 @@ async def _finish(session: StudySession, cancelled: bool, db) -> StudySessionOut
     if not cancelled and session.accumulated_seconds >= (
         session.planned_minutes * 60 - COMPLETE_GRACE_SECONDS
     ):
-        await _ring_buzzer(db, session.user_id)
+        await _ring_buzzer(db, session.user_id, session.planned_minutes)
+    else:
+        # Huỷ giữa chừng: dừng đếm ngược OLED
+        devices = list(
+            (await db.execute(select(Device).where(Device.user_id == session.user_id))).scalars()
+        )
+        if devices:
+            online = [d for d in devices if d.status == "online"]
+            target = max(online or devices, key=lambda d: d.last_seen_at or d.created_at)
+            await mqtt_service.send_command(target.device_code, {"action": "study_stop"})
     return _session_out(session)
 
 
