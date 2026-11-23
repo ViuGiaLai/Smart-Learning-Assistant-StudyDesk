@@ -82,6 +82,15 @@ def _load_credentials() -> dict[str, Any] | None:
     return data
 
 
+def get_project_id() -> str | None:
+    if settings.firebase_project_id:
+        return settings.firebase_project_id
+    creds = _load_credentials()
+    if creds and creds.get("project_id"):
+        return str(creds["project_id"])
+    return None
+
+
 def reset_credentials_cache() -> None:
     """Used by tests after changing settings."""
     global _credentials, _credentials_error, _access_token_value, _access_token_expiry

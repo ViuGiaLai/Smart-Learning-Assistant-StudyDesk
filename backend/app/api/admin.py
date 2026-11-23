@@ -629,7 +629,7 @@ async def system(_admin: CurrentAdmin, db: DbSession) -> AdminSystemOut:
         mqtt_host=settings.mqtt_host,
         mqtt_topic_prefix=settings.mqtt_topic_prefix,
         fcm_enabled=settings.fcm_enabled,
-        fcm_project_id=settings.firebase_project_id,
+        fcm_project_id=fcm.get_project_id(),
         total_users=int(await db.scalar(select(func.count(User.id))) or 0),
         total_devices=int(await db.scalar(select(func.count(Device.id))) or 0),
         total_tokens=int(await db.scalar(select(func.count(DeviceToken.id))) or 0),
