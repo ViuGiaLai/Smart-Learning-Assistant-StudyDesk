@@ -91,6 +91,7 @@ uint32_t alarmUntil      = 0;
 uint32_t alarmStartedAt  = 0;
 uint32_t lastAlarmBlinkAt = 0;
 bool     alarmPulseState = false;
+bool     ledStateBeforeAlarm = false; // lưu trạng thái LED trước khi alarm
 
 // ---------------------------------------------------------------------------
 // OLED – Screen state machine
@@ -118,6 +119,10 @@ char     cmdFeedbackText[20] = "";
 uint32_t cmdFeedbackUntil   = 0;
 char     autoAlertText[20]  = "";
 uint32_t autoAlertUntil     = 0;
+
+// Final10 non-blocking beep
+uint32_t final10BeepAt = 0;
+bool     final10BeepHigh = false;
 
 // AI voice
 bool    aiListening  = false;
@@ -209,6 +214,7 @@ void setBuzzer(bool value) {
 // Alarm / Study Done
 // ---------------------------------------------------------------------------
 void triggerStudyDoneAlarm(uint32_t durationMs = 8000) {
+  ledStateBeforeAlarm = ledState;   // lưu LED state trước alarm
   alarmActive     = true;
   alarmStartedAt  = millis();
   alarmUntil      = millis() + durationMs;
@@ -220,7 +226,7 @@ void triggerStudyDoneAlarm(uint32_t durationMs = 8000) {
   // Chuyển sang màn DONE
   studyActive   = false;
   currentScreen = SCR_DONE;
-  Serial.printf("[alarm] Hoan thanh %d phut: Den nhap nhay + Coi bao (8s)\n", studyPlannedMinutes);
+  Serial.printf("[alarm] Hoan thanh %d phut: Den nhap nhay + Coi bao (%lus)\n", studyPlannedMinutes, durationMs/1000);
 }
 
 void triggerAlarm(uint32_t durationMs = 8000) {
@@ -232,7 +238,9 @@ void stopAlarm() {
   alarmPulseState = false;
   digitalWrite(BUZZER_PIN, LOW);
   buzzerState = false;
-  setLed(ledState);
+  // Restore LED về đúng trạng thái trước khi alarm
+  digitalWrite(LED_PIN, ledStateBeforeAlarm ? HIGH : LOW);
+  ledState = ledStateBeforeAlarm;
   // Quay về STANDBY sau khi tắt
   if (currentScreen == SCR_DONE) currentScreen = SCR_STANDBY;
   Serial.println("[alarm] Da tat bao het gio");
@@ -245,12 +253,10 @@ void applyAutoLed(float lux) {
   if (alarmActive) return;
   if (!autoControl) return;
   if (millis() < manualHoldUntil) return;
-  bool wasOff = !ledState;
   if (lux < (float)lightMinLux) {
     if (!ledState) {
       setLed(true);
       Serial.printf("[auto] den BAT: ~%.0f lux < nguong %d\n", lux, lightMinLux);
-      // Màn AUTO ALERT
       snprintf(autoAlertText, sizeof(autoAlertText), "BAT DEN");
       autoAlertUntil = millis() + 3000;
       if (currentScreen != SCR_CMD_FEEDBACK) currentScreen = SCR_AUTO_ALERT;
@@ -487,6 +493,7 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
   } else if (strcmp(action, "set_buzzer") == 0) {
     if (value) {
       // Bật còi thủ công: kêu + nháy LED liên tục cho đến khi tắt
+      ledStateBeforeAlarm = ledState;   // lưu trước alarm
       alarmActive      = true;
       alarmStartedAt   = millis();
       alarmUntil       = millis() + 30000UL; // tối đa 30s nếu không có lệnh tắt
@@ -505,8 +512,12 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
     currentScreen = SCR_CMD_FEEDBACK;
 
   } else if (strcmp(action, "alarm") == 0 || strcmp(action, "study_done") == 0) {
-    int mins = doc["planned_minutes"] | doc["value"] | 0;
+    // Explicit parse để tránh ArduinoJson chained fallback lỗi
+    int mins = 0;
+    if (!doc["planned_minutes"].isNull()) mins = doc["planned_minutes"].as<int>();
+    else if (!doc["value"].isNull())      mins = doc["value"].as<int>();
     if (mins > 0) studyPlannedMinutes = mins;
+    if (studyPlannedMinutes <= 0) studyPlannedMinutes = studyTotalSeconds > 0 ? studyTotalSeconds / 60 : 1;
     triggerStudyDoneAlarm(8000);
 
   } else if (strcmp(action, "set_alerts") == 0) {
@@ -536,15 +547,21 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
     Serial.printf("[study] start: %d phut (%d giay)\n", studyPlannedMinutes, secs);
 
   } else if (strcmp(action, "study_stop") == 0) {
-    studyActive = false;
-    breakActive = false;
-    if (currentScreen == SCR_FOCUS || currentScreen == SCR_FINAL10) {
+    studyActive           = false;
+    breakActive           = false;
+    studyRemainingSeconds = 0;
+    studyTotalSeconds     = 0;
+    if (alarmActive) stopAlarm();
+    if (currentScreen == SCR_FOCUS || currentScreen == SCR_FINAL10 || currentScreen == SCR_DONE) {
       currentScreen = SCR_STANDBY;
     }
+    Serial.println("[study] stop");
 
   } else if (strcmp(action, "study_pause") == 0) {
     studyActive = false;
-    Serial.println("[study] pause");
+    // Giữ màn FOCUS để thấy thời gian còn lại (đứng im)
+    if (currentScreen == SCR_FINAL10) currentScreen = SCR_FOCUS;
+    Serial.printf("[study] pause: con %ds\n", (int)studyRemainingSeconds);
 
   } else if (strcmp(action, "study_resume") == 0) {
     if (studyRemainingSeconds > 0) {
@@ -632,8 +649,6 @@ void connectMqtt() {
     publishStatus("online");
     flushQueue();
     bootProgress = 100;
-    drawScreenBoot();
-    delay(300);
     bootDone = true;
     if (currentScreen == SCR_BOOT) {
       currentScreen = SCR_STANDBY;
@@ -1060,18 +1075,25 @@ void updateOled() {
     studyLastTickAt = now;
     if (studyRemainingSeconds > 0) {
       studyRemainingSeconds--;
-      // Màn 4: 10 giây cuối → còi bíp 1 lần/giây nhẹ
+      // Màn 4: 10 giây cuối → chuyển màn FINAL10, còi bíp non-blocking
       if (studyRemainingSeconds <= 10 && studyRemainingSeconds > 0) {
         currentScreen = SCR_FINAL10;
+        // Khởi động beep ngắn 80ms non-blocking
         digitalWrite(BUZZER_PIN, HIGH);
-        delay(80);
-        digitalWrite(BUZZER_PIN, LOW);
+        final10BeepAt   = now;
+        final10BeepHigh = true;
       }
       // Hết giờ → triggerAlarm (server cũng gửi, nhưng tự trigger an toàn hơn)
       if (studyRemainingSeconds == 0) {
         triggerAlarm(8000);
       }
     }
+  }
+
+  // --- Final10 beep tắt sau 80ms (non-blocking) ---
+  if (final10BeepHigh && now - final10BeepAt >= 80) {
+    digitalWrite(BUZZER_PIN, LOW);
+    final10BeepHigh = false;
   }
 
   // --- Break countdown tick ---
