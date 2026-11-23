@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Smart Learning Assistant - Study Desk Firmware
 // Board: ESP32 DevKit V1
 // Sensors: DHT22 (GPIO4), PIR HC-SR501 (GPIO27), LDR module (GPIO34)
@@ -106,7 +106,7 @@ bool     studyActive          = false;
 int32_t  studyRemainingSeconds = 0;
 int32_t  studyTotalSeconds     = 0;
 uint32_t studyLastTickAt      = 0;
-int      studyPlannedMinutes  = 25;
+int      studyPlannedMinutes  = 0;   // 0 = chưa set, sẽ được cập nhật từ MQTT study_start
 
 // Break countdown
 bool     breakActive          = false;
@@ -202,7 +202,7 @@ void setFan(bool value) {
 
 void setBuzzer(bool value) {
   buzzerState = value;
-  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, value ? HIGH : LOW);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,13 +485,22 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
     if (value) fanManualHoldUntil = 0;
 
   } else if (strcmp(action, "set_buzzer") == 0) {
-    buzzerState = value;
-    digitalWrite(BUZZER_PIN, value ? HIGH : LOW);
-    if (!value && alarmActive) {
+    if (value) {
+      // Bật còi thủ công: kêu + nháy LED liên tục cho đến khi tắt
+      alarmActive      = true;
+      alarmStartedAt   = millis();
+      alarmUntil       = millis() + 30000UL; // tối đa 30s nếu không có lệnh tắt
+      lastAlarmBlinkAt = millis();
+      alarmPulseState  = true;
+      digitalWrite(BUZZER_PIN, HIGH);
+      digitalWrite(LED_PIN, HIGH);
+      buzzerState = true;
+      snprintf(cmdFeedbackText, sizeof(cmdFeedbackText), "BAT COI");
+    } else {
+      // Tắt còi thủ công
       stopAlarm();
+      snprintf(cmdFeedbackText, sizeof(cmdFeedbackText), "TAT COI");
     }
-    // Hiện phản hồi lệnh thủ công 2s, không chuyển sang màn DONE
-    snprintf(cmdFeedbackText, sizeof(cmdFeedbackText), value ? "BAT COI" : "TAT COI");
     cmdFeedbackUntil = millis() + 2000;
     currentScreen = SCR_CMD_FEEDBACK;
 
@@ -512,10 +521,11 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
 
   // ---- OLED Study commands ----
   } else if (strcmp(action, "study_start") == 0) {
-    int secs = doc["value"] | 1500;
-    int mins = doc["planned_minutes"] | (secs / 60);
-    if (mins <= 0) mins = secs / 60;
-    if (mins <= 0) mins = 25;
+    int secs = doc["value"] | 0;
+    if (secs <= 0) secs = 1500;           // fallback 25p nếu không có value
+    int mins = doc["planned_minutes"] | 0;
+    if (mins <= 0) mins = secs / 60;      // tính từ giây
+    if (mins <= 0) mins = 1;              // tối thiểu 1 phút
     studyPlannedMinutes   = mins;
     studyTotalSeconds     = secs;
     studyRemainingSeconds = secs;
@@ -607,7 +617,8 @@ void connectMqtt() {
   if (now - lastMqttAttemptAt < 5000 && lastMqttAttemptAt != 0) return;
   lastMqttAttemptAt = now;
 
-  String clientId = String("esp32-") + DEVICE_CODE + "-" + String((uint32_t)esp_random(), HEX);
+  // Client ID cố định để broker queue messages khi offline (persistent session)
+  String clientId = String("esp32-") + DEVICE_CODE;
   bool ok;
   if (strlen(MQTT_USERNAME) > 0) {
     ok = mqtt.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD,
@@ -895,7 +906,9 @@ void drawScreenDone() {
   // Dòng thông báo đúng số phút thực tế đã học, tự động căn giữa
   display.setTextSize(1);
   char doneBuf[25];
-  snprintf(doneBuf, sizeof(doneBuf), "DA HOC %d PHUT!", studyPlannedMinutes);
+  int shownMins = studyPlannedMinutes > 0 ? studyPlannedMinutes : (studyTotalSeconds / 60);
+  if (shownMins <= 0) shownMins = 1;
+  snprintf(doneBuf, sizeof(doneBuf), "DA HOC %d PHUT!", shownMins);
   int xOff = (128 - strlen(doneBuf) * 6) / 2;
   if (xOff < 0) xOff = 0;
   display.setCursor(xOff, 44);
@@ -1171,12 +1184,12 @@ void loop() {
     }
   }
 
-  // --- Alarm pulse: LED + Còi đồng bộ nhấp nháy 150ms ---
+  // --- Alarm pulse: LED + Còi nhấp nháy 400ms (kêu rõ, nháy rõ) ---
   if (alarmActive) {
     uint32_t now = millis();
     if (now >= alarmUntil) {
       stopAlarm();
-    } else if (now - lastAlarmBlinkAt >= 150) {
+    } else if (now - lastAlarmBlinkAt >= 400) {
       lastAlarmBlinkAt  = now;
       alarmPulseState   = !alarmPulseState;
       digitalWrite(LED_PIN,    alarmPulseState ? HIGH : LOW);
@@ -1200,3 +1213,4 @@ void loop() {
 
   delay(10);
 }
+
