@@ -89,9 +89,10 @@ export default function FocusScreen(_props: Props) {
   useEffect(() => {
     if (mode === "break" && breakRemaining === 0) {
       setBreakRemaining(BREAK_SECONDS);
+      void sendDeskStudyCommand("study_stop"); // OLED về STANDBY khi hết nghỉ
       showMessage("Hết giờ nghỉ", "Quay lại bàn học khi bạn đã sẵn sàng nhé!");
     }
-  }, [mode, breakRemaining]);
+  }, [mode, breakRemaining, sendDeskStudyCommand]);
 
   const sendDeskStudyCommand = useCallback(async (action: string, value?: number) => {
     try {
@@ -311,7 +312,13 @@ export default function FocusScreen(_props: Props) {
           mode={mode === "break" ? "contained" : "outlined"}
           compact
           icon="coffee-outline"
-          onPress={() => setMode("break")}
+          onPress={() => {
+            if (mode !== "break") {
+              setMode("break");
+              setBreakRemaining(BREAK_SECONDS);
+              void sendDeskStudyCommand("study_break", BREAK_SECONDS);
+            }
+          }}
           disabled={session !== null}
           style={styles.modeButton}
         >

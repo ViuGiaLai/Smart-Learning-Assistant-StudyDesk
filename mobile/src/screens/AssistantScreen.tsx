@@ -88,6 +88,14 @@ export default function AssistantScreen({ navigation, route }: Props) {
   const setFanState = useDeviceStore((state) => state.setFanState);
   const setLedState = useDeviceStore((state) => state.setLedState);
 
+  // Helper gửi lệnh OLED tới ESP32 (best-effort, không throw)
+  const sendDeskCmd = useCallback(async (action: string, value?: number) => {
+    try {
+      const target = devices.find((d) => d.id === selectedId) ?? devices[0];
+      if (target) await api.sendCommand(target.id, action as any, value);
+    } catch { /* best-effort */ }
+  }, [devices, selectedId]);
+
   // ── Voice & Text Unified Dispatcher ────────────────────────────────────
   const speechResetRef = useRef<(() => void) | null>(null);
   const pendingStudyMinutes = useRef<number>(25);
@@ -306,7 +314,10 @@ export default function AssistantScreen({ navigation, route }: Props) {
       }
 
       // 2. Không phải lệnh IoT → Gửi lên AI Assistant (Groq / Gemini)
+      // Báo OLED: đang nghe → đang suy nghĩ → xong
+      void sendDeskCmd("ai_listen");
       try {
+        void sendDeskCmd("ai_think"); // chuyển ngay sang thinking khi bắt đầu gọi API
         const response = await api.chat(trimmed, conversationId);
         setConversationId(response.conversation_id);
         setMessages((current) => [
@@ -324,11 +335,12 @@ export default function AssistantScreen({ navigation, route }: Props) {
       } catch (caught) {
         setError(messageOf(caught));
       } finally {
+        void sendDeskCmd("ai_done"); // trả OLED về màn trước
         setSending(false);
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
       }
     },
-    [sending, selectedId, devices, conversationId, setFanState, setLedState],
+    [sending, selectedId, devices, conversationId, setFanState, setLedState, sendDeskCmd],
   );
 
   const handleVoiceFinalResult = useCallback(
