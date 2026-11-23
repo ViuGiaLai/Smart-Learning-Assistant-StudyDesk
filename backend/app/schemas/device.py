@@ -81,7 +81,7 @@ class DeviceStatusOut(BaseModel):
 
 CommandAction = Literal[
     "set_led", "set_fan", "set_fan_auto", "set_buzzer", "set_alerts", "set_thresholds", "ping",
-    "study_start", "study_stop", "study_break", "study_done", "alarm",
+    "study_start", "study_stop", "study_pause", "study_resume", "study_break", "study_done", "alarm",
     "ai_listen", "ai_think", "ai_done",
 ]
 

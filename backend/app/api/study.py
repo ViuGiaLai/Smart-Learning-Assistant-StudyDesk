@@ -159,6 +159,14 @@ async def pause_session(session_id: str, user: CurrentUser, db: DbSession) -> St
     session.status = "paused"
     await db.commit()
     await db.refresh(session)
+
+    # Gửi lệnh tạm dừng xuống OLED
+    devices = list((await db.execute(select(Device).where(Device.user_id == user.id))).scalars())
+    if devices:
+        online = [d for d in devices if d.status == "online"]
+        target = max(online or devices, key=lambda d: d.last_seen_at or d.created_at)
+        await mqtt_service.send_command(target.device_code, {"action": "study_pause"})
+
     return _session_out(session)
 
 
@@ -171,6 +179,14 @@ async def resume_session(session_id: str, user: CurrentUser, db: DbSession) -> S
     session.last_resumed_at = utcnow()
     await db.commit()
     await db.refresh(session)
+
+    # Gửi lệnh tiếp tục xuống OLED
+    devices = list((await db.execute(select(Device).where(Device.user_id == user.id))).scalars())
+    if devices:
+        online = [d for d in devices if d.status == "online"]
+        target = max(online or devices, key=lambda d: d.last_seen_at or d.created_at)
+        await mqtt_service.send_command(target.device_code, {"action": "study_resume"})
+
     return _session_out(session)
 
 

@@ -93,6 +93,19 @@ export default function FocusScreen(_props: Props) {
     }
   }, [mode, breakRemaining]);
 
+  const sendDeskStudyCommand = useCallback(async (action: string, value?: number) => {
+    try {
+      const devices = await api.devices();
+      const online = devices.filter((d) => d.status === "online");
+      const target = online[0] ?? devices[0];
+      if (target) {
+        await api.sendCommand(target.id, action as any, value);
+      }
+    } catch {
+      // Best-effort đồng bộ bàn học
+    }
+  }, []);
+
   const stopDeskAlarm = useCallback(async () => {
     try {
       const devices = await api.devices();
@@ -117,9 +130,11 @@ export default function FocusScreen(_props: Props) {
         setRemaining(selectedMinutes * 60);
         setTotal(selectedMinutes * 60);
         autoDone.current = false;
+        void sendDeskStudyCommand(cancelled ? "study_stop" : "study_done", session.planned_minutes);
         if (auto && !cancelled) {
           setMode("break");
           setBreakRemaining(BREAK_SECONDS);
+          void sendDeskStudyCommand("study_break", BREAK_SECONDS);
           if (Platform.OS === "web") {
             // eslint-disable-next-line no-alert
             window.alert(
@@ -143,6 +158,7 @@ export default function FocusScreen(_props: Props) {
           setMode("focus");
         } else {
           setMode("focus");
+          void sendDeskStudyCommand("study_stop");
           if (Platform.OS === "web") {
             // eslint-disable-next-line no-alert
             window.alert(`Đã kết thúc!\n\nThời gian tập trung: ${formatDuration(done.duration_seconds)}.`);
@@ -216,13 +232,15 @@ export default function FocusScreen(_props: Props) {
     setShowCustom(false);
   };
 
-  const start = async () => {    setBusy(true);
+  const start = async () => {
+    setBusy(true);
     setError(null);
     try {
       const created = await api.startSession(selectedMinutes);
       adopt(created);
       setRemaining(selectedMinutes * 60);
       setTotal(selectedMinutes * 60);
+      void sendDeskStudyCommand("study_start", selectedMinutes * 60);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
         await loadActive();
@@ -240,6 +258,7 @@ export default function FocusScreen(_props: Props) {
     try {
       const updated = await api.pauseSession(session.id);
       setSession(updated);
+      void sendDeskStudyCommand("study_pause");
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -254,6 +273,7 @@ export default function FocusScreen(_props: Props) {
     try {
       const updated = await api.resumeSession(session.id);
       setSession(updated);
+      void sendDeskStudyCommand("study_resume");
     } catch (caught) {
       setError(messageOf(caught));
     } finally {

@@ -532,6 +532,18 @@ void onCommand(char *topic, byte *payload, unsigned int length) {
       currentScreen = SCR_STANDBY;
     }
 
+  } else if (strcmp(action, "study_pause") == 0) {
+    studyActive = false;
+    Serial.println("[study] pause");
+
+  } else if (strcmp(action, "study_resume") == 0) {
+    if (studyRemainingSeconds > 0) {
+      studyActive     = true;
+      studyLastTickAt = millis();
+      currentScreen   = SCR_FOCUS;
+      Serial.println("[study] resume");
+    }
+
   } else if (strcmp(action, "study_break") == 0) {
     int secs = doc["value"] | 300;
     studyActive           = false;
@@ -612,8 +624,10 @@ void connectMqtt() {
     drawScreenBoot();
     delay(300);
     bootDone = true;
-    currentScreen = SCR_STANDBY;
-    Serial.println("[oled] Boot done -> STANDBY");
+    if (currentScreen == SCR_BOOT) {
+      currentScreen = SCR_STANDBY;
+      Serial.println("[oled] Boot done -> STANDBY");
+    }
   } else {
     Serial.printf("[mqtt] failed rc=%d\n", mqtt.state());
   }
@@ -1146,8 +1160,10 @@ void loop() {
     if (mqtt.connected()) {
       bootProgress = 100;
       bootDone     = true;
-      currentScreen = SCR_STANDBY;
-      Serial.println("[oled] Boot done -> STANDBY");
+      if (currentScreen == SCR_BOOT) {
+        currentScreen = SCR_STANDBY;
+        Serial.println("[oled] Boot done -> STANDBY");
+      }
     } else if (WiFi.status() == WL_CONNECTED && bootProgress < 60) {
       bootProgress = 60;
     } else if (bootProgress < 55) {
